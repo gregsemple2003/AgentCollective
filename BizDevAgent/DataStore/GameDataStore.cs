@@ -51,6 +51,8 @@ namespace BizDevAgent.DataStore
                 // Existing error handling logic
             }
 
+            _browser = result.Value.Browser;
+
             // Wait for the selector to ensure the elements are loaded
             var page = result.Value.Page;
             //await page.WaitForSelectorAsync("table.table-bordered");

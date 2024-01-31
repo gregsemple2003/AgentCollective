@@ -38,8 +38,6 @@ namespace BizDevAgent.DataStore
                     }
                 }
             }
-
-            TerminateChromeProcessesForTesting();
         }
         public async Task<Website> Load(string rootUrl, string tag = "")
         {
@@ -52,27 +50,5 @@ namespace BizDevAgent.DataStore
                 ExtractedEmails = crawler.ExtractedEmails
             };
         }
-
-        private static void TerminateChromeProcessesForTesting()
-        {
-            // PuppeteerSharp seems to leak chrome.exe processes, so we kill them manually.
-            foreach (var process in Process.GetProcessesByName("chrome"))
-            {
-                try
-                {
-                    if (process.MainModule.FileVersionInfo.FileDescription == "Google Chrome for Testing")
-                    {
-                        process.Kill();
-                        Console.WriteLine($"Terminated chrome.exe with PID: {process.Id}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Handle any exceptions, such as access denied
-                    Console.WriteLine($"Error terminating process {process.Id}: {ex.Message}");
-                }
-            }
-        }
-
     }
 }

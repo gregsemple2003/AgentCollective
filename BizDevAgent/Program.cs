@@ -8,8 +8,6 @@ using Microsoft.Extensions.Configuration;
 
 class Program
 {
-    public const int WorkerCount = 30;
-
     private static string GameSeriesDataPath => Path.Combine(Paths.GetDataPath(), "GameSeriesDB");
     private static string GameDataPath => Path.Combine(Paths.GetDataPath(), "games.json");
     private static string JobDataPath => Path.Combine(Paths.GetDataPath(), "jobs.json");
@@ -29,6 +27,10 @@ class Program
         serviceCollection.AddSingleton<IConfiguration>(configuration);
 
         // Register data stores
+        serviceCollection.AddSingleton<WebsiteDataStore>(serviceProvider =>
+        {
+            return new WebsiteDataStore(WebsiteDataPath);
+        });
         serviceCollection.AddSingleton<JobDataStore>(serviceProvider =>
         {
             return new JobDataStore(JobDataPath, serviceProvider);
@@ -48,8 +50,7 @@ class Program
         });
 
         // Register jobs 
-        serviceCollection.AddTransient<RankingChangesJob>();
-        serviceCollection.AddTransient<TestPeriodicJob>();
+        Job.RegisterAll(serviceCollection);
         serviceCollection.AddTransient<JobRunner>();
 
         // Build the service provider
@@ -99,67 +100,7 @@ class Program
 
     private static async Task CheckGamesForNewHighs(GameDataStore gameDataStore, GameSeriesDataStore gameSeriesDataStore)
     {
-        var newHighsTask = new RankingChangesJob(gameDataStore, gameSeriesDataStore);
+        var newHighsTask = new UpdateGameRankingsJob(gameDataStore, gameSeriesDataStore);
         await newHighsTask.Run();
-    }
-
-    private static async Task UpdateGameDetails(GameDataStore gameDataStore)
-    {
-        // Update game details
-        var games = gameDataStore.All;
-        Random rnd = new Random();
-        TimeSpan medianDelay = TimeSpan.FromSeconds(3);
-        TimeSpan radiusDelay = TimeSpan.FromSeconds(1);
-        for (int i = 0; i < games.Count; i++)
-        {
-            var game = games[i];
-
-            Console.WriteLine($"[{i} / {games.Count}] Updating details for '{game.Name}' by '{game.DeveloperName}'");
-
-            // Update the game with information from the steamdb app page
-            await gameDataStore.UpdateDetails(game);
-
-            // Throttle the update so we don't impolitely spam the server
-            int minDelay = (int)(medianDelay.TotalMilliseconds - radiusDelay.TotalMilliseconds);
-            int maxDelay = (int)(medianDelay.TotalMilliseconds + radiusDelay.TotalMilliseconds);
-            int delay = rnd.Next(minDelay, maxDelay);
-            Console.WriteLine($"Waiting {delay} ms");
-            await Task.Delay(delay);
-
-            // TODO gsemple: remove
-            await gameDataStore.SaveAll();
-        }
-
-        await gameDataStore.SaveAll();
-    }
-
-    private static async Task UpdateCompanyWebsites(CompanyDataStore companiesDataStore)
-    {
-        var companies = companiesDataStore.All;
-        var websiteDataStore = new WebsiteDataStore(WebsiteDataPath);
-
-        // Process companies until all websites are crawled.
-        var companyQueue = new ConcurrentQueue<Company>(companies);
-
-        // Create a number of workers which drain the queue of work until empty
-        var workerTasks = new List<Task>();
-        for (int i = 0; i < WorkerCount; i++)
-        {
-            workerTasks.Add(Task.Run(async () =>
-            {
-                while (companyQueue.TryDequeue(out var company))
-                {
-                    var website = await websiteDataStore.Load(company.Url, $"{company.Index} / {companies.Count}");
-                    company.Emails = website.ExtractedEmails;
-                }
-            }));
-        }
-
-        // Wait until the work queue is done
-        await Task.WhenAll(workerTasks);
-
-        // Save any mutations in companies
-        await companiesDataStore.SaveAll();
-
     }
 }

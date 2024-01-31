@@ -19,17 +19,20 @@ namespace BizDevAgent.Jobs
             _gameDataStore = gameDataStore;
         }
 
-        public async override Task Run()
+        public override Task UpdateScheduledRunTime()
         {
             ScheduledRunTime = ScheduledRunTime.AddSeconds(5);
+            return Task.CompletedTask;
+        }
 
+        public async override Task Run()
+        {
             await Task.Delay(1*1000);
 
             Console.WriteLine($"Test job '{Name}' finished.  now = {DateTime.Now}");
 
             string obj = null;
             var x = obj.Length;
-
         }
     }
 }

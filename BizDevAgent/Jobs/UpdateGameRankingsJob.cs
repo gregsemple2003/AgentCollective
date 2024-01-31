@@ -18,8 +18,8 @@ namespace BizDevAgent.Jobs
         public int ReviewCount { get; set; }
     }
 
-    [TypeId("RankingChangesJob")]
-    public class RankingChangesJob : Job
+    [TypeId("UpdateGameRankingsJob")]
+    public class UpdateGameRankingsJob : Job
     {
         public DateTime LastRunTime { get; set; }
 
@@ -28,17 +28,21 @@ namespace BizDevAgent.Jobs
         private readonly GameDataStore _gameDataStore;
         private readonly GameSeriesDataStore _gameSeriesDataStore;
 
-        public RankingChangesJob(GameDataStore gameDataStore, GameSeriesDataStore gameSeriesDataStore)
+        public UpdateGameRankingsJob(GameDataStore gameDataStore, GameSeriesDataStore gameSeriesDataStore)
         {
             _gameDataStore = gameDataStore;
             _gameSeriesDataStore = gameSeriesDataStore;
 
             NewHighs = new List<NewHighsEntry>();
-
-            LoadState(); // Load LastRunTime from persisted state
         }
 
-        public async Task Run()
+        public override Task UpdateScheduledRunTime()
+        {
+            ScheduledRunTime = ScheduledRunTime.AddDays(1);
+            return Task.CompletedTask;
+        }
+
+        public async override Task Run()
         {
             foreach (var game in _gameDataStore.All)
             {
@@ -64,8 +68,6 @@ namespace BizDevAgent.Jobs
             LastRunTime = DateTime.Now;
 
             await ReportResults();
-
-            SaveState(); // Persist the updated LastRunTime
         }
 
         private async Task ReportResults()
@@ -98,11 +100,9 @@ namespace BizDevAgent.Jobs
                 };
                 NewHighs.Add(newHigh);
             }
-
-            var x = 3;
         }
 
-        public string GetTierForReviewCount(int reviewCount)
+        private string GetTierForReviewCount(int reviewCount)
         {
             if (reviewCount > 100000)
             {
@@ -128,16 +128,6 @@ namespace BizDevAgent.Jobs
             {
                 return "Tier 0";
             }
-        }
-
-        private void LoadState()
-        {
-            // Implement loading of LastRunTime from a persisted state
-        }
-
-        private void SaveState()
-        {
-            // Implement saving of LastRunTime to a persisted state
         }
     }
 }

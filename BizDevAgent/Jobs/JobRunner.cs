@@ -13,7 +13,6 @@ namespace BizDevAgent.Jobs
         private readonly JobDataStore _jobDataStore;
         private readonly IConfiguration _configuration;
 
-
         public JobRunner(JobDataStore jobDataStore, IConfiguration configuration)
         {
             _jobDataStore = jobDataStore;
@@ -29,7 +28,9 @@ namespace BizDevAgent.Jobs
         {
             while (_isRunning)
             {
-                var nextJob = _jobDataStore.All.OrderBy(job => job.ScheduledRunTime).FirstOrDefault();
+                var nextJob = _jobDataStore.All.Where(job => job.Enabled)
+                                    .OrderBy(job => job.ScheduledRunTime)
+                                    .FirstOrDefault();
                 if (nextJob != null && DateTime.Now > nextJob.ScheduledRunTime)
                 {
                     var originalOut = Console.Out;
@@ -44,6 +45,7 @@ namespace BizDevAgent.Jobs
                             Console.SetOut(writerOut);
                             Console.SetError(writerError);
 
+                            await nextJob.UpdateScheduledRunTime();
                             await nextJob.Run();
                         }
                         catch (Exception ex)
@@ -84,6 +86,7 @@ namespace BizDevAgent.Jobs
                         }
                     }
                 }
+
                 await Task.Delay(1000); // Wait for a second before checking for the next job
             }
         }
