@@ -1,9 +1,6 @@
 ﻿using HtmlAgilityPack;
 using PuppeteerSharp;
-using System.Data;
 using Newtonsoft.Json;
-using System.Reflection;
-using System.Net.Http;
 using static BizDevAgent.Utilities.PuppeteerUtils;
 using System.Text.RegularExpressions;
 using FluentResults;

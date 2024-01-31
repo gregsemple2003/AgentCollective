@@ -1,7 +1,6 @@
 ﻿using BizDevAgent.Model;
 using Newtonsoft.Json;
 using RocksDbSharp;
-using System.Diagnostics;
 
 namespace BizDevAgent.DataStore
 {
