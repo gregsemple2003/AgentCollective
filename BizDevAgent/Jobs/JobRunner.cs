@@ -13,6 +13,9 @@ namespace BizDevAgent.Jobs
         private readonly JobDataStore _jobDataStore;
         private readonly IConfiguration _configuration;
 
+        private static readonly TimeSpan DisplayInterval = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan SleepInterval = TimeSpan.FromSeconds(1);
+
         public JobRunner(JobDataStore jobDataStore, IConfiguration configuration)
         {
             _jobDataStore = jobDataStore;
@@ -26,11 +29,31 @@ namespace BizDevAgent.Jobs
 
         public async Task Start()
         {
+            DateTime lastDisplayTime = DateTime.MinValue;
+
             while (_isRunning)
             {
                 var nextJob = _jobDataStore.All.Where(job => job.Enabled)
                                     .OrderBy(job => job.ScheduledRunTime)
                                     .FirstOrDefault();
+
+                // Display countdown for the next job
+                var now = DateTime.Now;
+                if (nextJob != null && now - lastDisplayTime > DisplayInterval)
+                {
+                    var timeUntilNextJob = nextJob.ScheduledRunTime - now;
+                    if (timeUntilNextJob > TimeSpan.Zero)
+                    {
+                        int hours = (int)timeUntilNextJob.TotalHours;
+                        int minutes = timeUntilNextJob.Minutes;
+                        string timeFormat = $"{hours}h{minutes}m";
+
+                        Console.WriteLine($"Next job: '{nextJob.Name}' ({nextJob.GetType().Name}), scheduled in {timeFormat}");
+                    }
+                    lastDisplayTime = now;
+                }
+
+                // Execute the next job
                 if (nextJob != null && DateTime.Now > nextJob.ScheduledRunTime)
                 {
                     var originalOut = Console.Out;
@@ -87,7 +110,7 @@ namespace BizDevAgent.Jobs
                     }
                 }
 
-                await Task.Delay(1000); // Wait for a second before checking for the next job
+                await Task.Delay((int)SleepInterval.TotalMilliseconds); // Wait for a second before checking for the next job
             }
         }
 
