@@ -55,6 +55,7 @@ class Program
         // Build the service provider
         var serviceProvider = serviceCollection.BuildServiceProvider();
         var gameDataStore = serviceProvider.GetRequiredService<GameDataStore>();
+        var gameSeriesDataStore = serviceProvider.GetRequiredService<GameSeriesDataStore>();
         var companyDataStore = serviceProvider.GetRequiredService<CompanyDataStore>();
         var jobDataStore = serviceProvider.GetRequiredService<JobDataStore>();
 
@@ -70,6 +71,7 @@ class Program
 
         // Run jobs until we're told to exit
         var jobRunner = serviceProvider.GetRequiredService<JobRunner>();
+        //jobRunner.RunJob(new UpdateGameRankingsJob(gameDataStore, gameSeriesDataStore));
         await jobRunner.Start();
     }
 }

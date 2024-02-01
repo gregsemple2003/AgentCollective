@@ -73,7 +73,7 @@ namespace BizDevAgent.Jobs
             {
                 string steamUrl = $"https://store.steampowered.com/app/{newHigh.Game.SteamAppId}";
                 string imageUrl = newHigh.Game.SteamHeaderImageUrl; // Assuming this property holds the image URL
-                sb.Append($"<p><a href='{steamUrl}' target='_blank'><img src='{imageUrl}' alt='Game Image' style='width:300px; height:auto; margin-right:10px; vertical-align:middle;'/> {newHigh.Game.Name}</a> is now a {newHigh.Ranking}!</p>");
+                sb.Append($"<p><a href='{steamUrl}' target='_blank'><img src='{imageUrl}' alt='Game Image' style='width:300px; height:auto; margin-right:10px; vertical-align:middle;'/> {newHigh.Game.Name}</a> is now a {newHigh.Ranking}!  ({newHigh.ReviewCount} reviews)</p>");
             }
             sb.Append("</body></html>");
             await EmailUtils.SendEmail("gregsemple2003@gmail.com", "Ranking Changes", sb.ToString());

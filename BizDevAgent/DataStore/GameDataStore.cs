@@ -14,7 +14,7 @@ namespace BizDevAgent.DataStore
         private GameSeriesDataStore _seriesDataStore;
         private IBrowser _browser;
 
-        public GameDataStore(GameSeriesDataStore seriesDataStore, string path) : base(path, forceRemote: false)
+        public GameDataStore(GameSeriesDataStore seriesDataStore, string path) : base(path)
         {
             _seriesDataStore = seriesDataStore;
         }
@@ -174,6 +174,14 @@ namespace BizDevAgent.DataStore
 
             // Wait for the selector to ensure the elements are loaded
             var page = result.Value.Page;
+
+            // Click "Year" column to sort by year descending (most recent first)
+            string headerXPath = "//th[contains(text(), 'Year')]";
+            await page.WaitForXPathAsync(headerXPath);
+            var headerElement = await page.WaitForXPathAsync(headerXPath);
+            await headerElement.ClickAsync();
+            await page.WaitForSelectorAsync("tr.app");
+            await headerElement.ClickAsync();
             await page.WaitForSelectorAsync("tr.app");
 
             // Select and iterate over the elements

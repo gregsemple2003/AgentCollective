@@ -27,7 +27,7 @@ namespace BizDevAgent.Jobs
 
         public async override Task Run()
         {
-            var games = _gameDataStore.All;
+            var games = await _gameDataStore.LoadAll(forceRemote: true);
             Random rnd = new Random();
             TimeSpan medianDelay = TimeSpan.FromSeconds(3);
             TimeSpan radiusDelay = TimeSpan.FromSeconds(1);

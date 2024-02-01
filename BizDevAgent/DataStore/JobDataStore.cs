@@ -6,7 +6,7 @@ namespace BizDevAgent.DataStore
     public class JobDataStore : FileDataStore<Job>
     {
         public JobDataStore(string path, IServiceProvider serviceProvider)
-            : base(path, CreateJsonSerializerSettings(serviceProvider), forceRemote: false)
+            : base(path, CreateJsonSerializerSettings(serviceProvider))
         {
         }
 

@@ -15,12 +15,10 @@ namespace BizDevAgent.DataStore
         public List<TEntity> All { get; private set; }
 
         private readonly JsonSerializerSettings _settings;
-        private bool _forceRemote;
 
-        public FileDataStore(string fileName, JsonSerializerSettings settings = null, bool forceRemote = false)
+        public FileDataStore(string fileName, JsonSerializerSettings settings = null)
         {
             _fileName = fileName;
-            _forceRemote = forceRemote;
 
             All = new List<TEntity>();
 
@@ -42,10 +40,14 @@ namespace BizDevAgent.DataStore
             _settings = settings;
         }
 
-        public async Task<List<TEntity>> LoadAll()
+        /// <summary>
+        /// Load all the entities in this data store.  If forceRemote == true, fetch entities from the remote source.
+        /// Otherwise fetch from the local cache.
+        /// </summary>
+        public async Task<List<TEntity>> LoadAll(bool forceRemote = false)
         {
             // Check cache and return if exists
-            if (!_forceRemote)
+            if (!forceRemote)
             {
                 All = await GetLocal();
                 if (All != null)
