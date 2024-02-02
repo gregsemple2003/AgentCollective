@@ -28,9 +28,6 @@ namespace BizDevAgent.Jobs
         public async override Task Run()
         {
             var games = await _gameDataStore.LoadAll(forceRemote: true);
-            Random rnd = new Random();
-            TimeSpan medianDelay = TimeSpan.FromSeconds(3);
-            TimeSpan radiusDelay = TimeSpan.FromSeconds(1);
             for (int i = 0; i < games.Count; i++)
             {
                 var game = games[i];
@@ -39,13 +36,6 @@ namespace BizDevAgent.Jobs
 
                 // Update the game with information from the steamdb app page
                 await _gameDataStore.UpdateDetails(game);
-
-                // Throttle the update so we don't impolitely spam the server
-                int minDelay = (int)(medianDelay.TotalMilliseconds - radiusDelay.TotalMilliseconds);
-                int maxDelay = (int)(medianDelay.TotalMilliseconds + radiusDelay.TotalMilliseconds);
-                int delay = rnd.Next(minDelay, maxDelay);
-                Console.WriteLine($"Waiting {delay} ms");
-                await Task.Delay(delay);
             }
 
             await _gameDataStore.SaveAll();

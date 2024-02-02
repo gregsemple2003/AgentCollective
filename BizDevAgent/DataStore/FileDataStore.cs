@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using BizDevAgent.Utilities;
 using System.Reflection;
 
 namespace BizDevAgent.DataStore
@@ -57,7 +58,17 @@ namespace BizDevAgent.DataStore
             }
 
             // Get from the remote source
-            All = await GetRemote();
+            var updated = await GetRemote();
+
+            foreach(var newObj in updated)
+            {
+                var existingObj = All.Find(o => GetKey(newObj) == GetKey(o));
+                if (existingObj != null)
+                {
+                    // Override non-default values in the newly-generated list
+                    ObjectMerger.Merge(newObj, existingObj);
+                }
+            }
 
             // Save locally to speed up the next request
             await SaveLocal();
@@ -95,6 +106,11 @@ namespace BizDevAgent.DataStore
         }
 
         protected virtual async Task<List<TEntity>> GetRemote()
+        {
+            throw new NotImplementedException();
+        }
+
+        protected virtual string GetKey(TEntity entity)
         {
             throw new NotImplementedException();
         }

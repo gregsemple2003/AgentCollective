@@ -1,58 +1,33 @@
 ﻿using HtmlAgilityPack;
+using BizDevAgent.Agents;
 using PuppeteerSharp;
 using Newtonsoft.Json;
-using static BizDevAgent.Utilities.PuppeteerUtils;
 using System.Text.RegularExpressions;
 using FluentResults;
 using Polly;
 using BizDevAgent.Model;
+using AngleSharp.Dom;
 
 namespace BizDevAgent.DataStore
 {
-    public class GameDataStore : FileDataStore<Game>, IDisposable
+    public class GameDataStore : FileDataStore<Game>
     {
-        private GameSeriesDataStore _seriesDataStore;
-        private IBrowser _browser;
+        private readonly GameSeriesDataStore _seriesDataStore;
+        private readonly WebBrowsingAgent _browsingAgent;
 
-        public GameDataStore(GameSeriesDataStore seriesDataStore, string path) : base(path)
+        public GameDataStore(GameSeriesDataStore seriesDataStore, WebBrowsingAgent browsingAgent, string path) : base(path)
         {
             _seriesDataStore = seriesDataStore;
-        }
-
-        public async void Dispose()
-        {
-            if (_browser != null)
-            {
-                await _browser.CloseAsync();
-            }
+            _browsingAgent = browsingAgent;
         }
 
         public async Task UpdateDetails(Game game)
         {
-            var retryPolicy = Policy
-                .HandleResult<Result<BrowsePageResult>>(r => r.IsFailed)
-                .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(1),
-                    (result, timeSpan, retryCount, context) =>
-                    {
-                        // Log each retry attempt with its error
-                        Console.WriteLine($"Failure to browse page after retry {retryCount} for game {game.SteamAppId} due to error: {result.Result.Errors.FirstOrDefault()?.Message}");
-                    });
-
-            var result = await retryPolicy.ExecuteAsync(() =>
-                BrowsePage($"https://store.steampowered.com/app/{game.SteamAppId}", _browser));
-
-            if (result.IsFailed)
-            {
-                // Handle failure after retries
-                Console.WriteLine("All attempts failed.");
-                // Existing error handling logic
-            }
-
-            _browser = result.Value.Browser;
+            var url = $"https://store.steampowered.com/app/{game.SteamAppId}";
+            var browseResult = await _browsingAgent.BrowsePage(url);
 
             // Wait for the selector to ensure the elements are loaded
-            var page = result.Value.Page;
-            //await page.WaitForSelectorAsync("table.table-bordered");
+            var page = browseResult.Value.Page;
             string pageContent = await page.GetContentAsync();
 
             // Load html document nodes
@@ -162,15 +137,18 @@ namespace BizDevAgent.DataStore
             await page.CloseAsync();
         }
 
+        protected override string GetKey(Game game)
+        {
+            return game.Name;
+        }
+
         protected override async Task<List<Game>> GetRemote()
         {
-            var result = await BrowsePage("https://steamdb.info/tech/Engine/Unreal/", _browser);
+            var result = await _browsingAgent.BrowsePage("https://steamdb.info/tech/Engine/Unreal/");
             if (result.IsFailed)
             {
                 Console.WriteLine($"ERROR: GetRemote failed to browse page");
             }
-
-            _browser = result.Value.Browser;
 
             // Wait for the selector to ensure the elements are loaded
             var page = result.Value.Page;

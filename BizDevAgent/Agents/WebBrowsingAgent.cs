@@ -1,46 +1,98 @@
-﻿using PuppeteerSharp;
+﻿using BizDevAgent.Model;
 using FluentResults;
+using Polly;
+using PuppeteerSharp;
+using System;
 
-namespace BizDevAgent.Utilities
+namespace BizDevAgent.Agents
 {
-    public static class PuppeteerUtils
+    public class ResponseError : Error
     {
-        public class ResponseError : Error
-        {
-            public IResponse ErrorResponse { get; }
+        public IResponse ErrorResponse { get; }
 
-            public ResponseError(IResponse response)
+        public ResponseError(IResponse response)
+        {
+            ErrorResponse = response;
+        }
+    }
+
+    public struct BrowsePageResult
+    {
+        public IPage Page { get; set; }
+        public IBrowser Browser { get; set; }
+        public IResponse Response { get; set; }
+    }
+
+    public class WebBrowsingAgent : Agent, IDisposable
+    {
+        private readonly Random _random;
+
+        private IBrowser _browser;
+        private DateTime _lastActionTime;
+
+        public WebBrowsingAgent()
+        {
+            _random = new Random();
+        }
+
+        public async void Dispose()
+        {
+            if (_browser != null)
             {
-                ErrorResponse = response;
+                await _browser.CloseAsync();
             }
         }
 
-        public struct BrowsePageResult
+        public async Task<Result<BrowsePageResult>> BrowsePage(string url)
         {
-            public IPage Page { get; set; }
-            public IBrowser Browser { get; set; }
-            public IResponse Response { get; set; }
+            var retryPolicy = Policy
+                .HandleResult<Result<BrowsePageResult>>(r => r.IsFailed)
+                .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(1),
+                    (result, timeSpan, retryCount, context) =>
+                    {
+                        // Log each retry attempt with its error
+                        Console.WriteLine($"Failure to browse page after retry {retryCount} for url {url} due to error: {result.Result.Errors.FirstOrDefault()?.Message}");
+                    });
+
+            var result = await retryPolicy.ExecuteAsync(() =>
+                BrowsePageInternal(url));
+
+            if (result.IsFailed)
+            {
+                Console.WriteLine("All attempts failed.");
+            }
+
+            return result;
         }
 
-        public static async Task<Result<BrowsePageResult>> BrowsePage(string url, IBrowser browserOverride = null)
+        private async Task<Result<BrowsePageResult>> BrowsePageInternal(string url)
         {
             var result = new BrowsePageResult();
 
             try
             {
-                // Initialize PuppeteerSharp
-                if (browserOverride is not null)
+                // Calculate the delay required to ensure at least 1 second +/- some noise has passed since the last action
+                var timeSinceLastAction = DateTime.UtcNow - _lastActionTime;
+                var noise = TimeSpan.FromMilliseconds(_random.Next(-500, 500)); // Noise of -500ms to +500ms
+                var delayRequired = TimeSpan.FromSeconds(1) + noise - timeSinceLastAction;
+                if (delayRequired > TimeSpan.Zero)
                 {
-                    result.Browser = browserOverride;
+                    await Task.Delay(delayRequired);
+                    Console.WriteLine($"[WebBrowsingAgent] Waiting {delayRequired.TotalMilliseconds} ms");
                 }
-                else
+
+                _lastActionTime = DateTime.UtcNow;
+
+                // Initialize PuppeteerSharp
+                if (_browser is null)
                 {
                     await new BrowserFetcher().DownloadAsync();
-                    result.Browser = await Puppeteer.LaunchAsync(new LaunchOptions
+                    _browser = await Puppeteer.LaunchAsync(new LaunchOptions
                     {
                         Headless = false // Set false if you want to see the browser
                     });
                 }
+                result.Browser = _browser;
 
                 // Navigate to the Webpage
                 IPage page = await result.Browser.NewPageAsync();
@@ -102,5 +154,6 @@ namespace BizDevAgent.Utilities
 
             return result;
         }
+
     }
 }
