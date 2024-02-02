@@ -4,6 +4,7 @@ using BizDevAgent.Utilities;
 using BizDevAgent.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
+using BizDevAgent.Agents;
 
 class Program
 {
@@ -36,7 +37,8 @@ class Program
         });
         serviceCollection.AddSingleton<CompanyDataStore>(serviceProvider =>
         {
-            return new CompanyDataStore(CompanyDataPath);
+            var browsingAgent = serviceProvider.GetRequiredService<WebBrowsingAgent>();
+            return new CompanyDataStore(CompanyDataPath, browsingAgent);
         });
         serviceCollection.AddSingleton<GameSeriesDataStore>(serviceProvider =>
         {
@@ -45,12 +47,13 @@ class Program
         serviceCollection.AddSingleton<GameDataStore>(serviceProvider =>
         {
             var gameSeriesDataStore = serviceProvider.GetRequiredService<GameSeriesDataStore>();
-            return new GameDataStore(gameSeriesDataStore, GameDataPath);
+            var browsingAgent = serviceProvider.GetRequiredService<WebBrowsingAgent>();
+            return new GameDataStore(gameSeriesDataStore, browsingAgent, GameDataPath);
         });
 
         // Register jobs 
         Job.RegisterAll(serviceCollection);
-        serviceCollection.AddTransient<JobRunner>();
+        Agent.RegisterAll(serviceCollection);
 
         // Build the service provider
         var serviceProvider = serviceCollection.BuildServiceProvider();
@@ -58,6 +61,7 @@ class Program
         var gameSeriesDataStore = serviceProvider.GetRequiredService<GameSeriesDataStore>();
         var companyDataStore = serviceProvider.GetRequiredService<CompanyDataStore>();
         var jobDataStore = serviceProvider.GetRequiredService<JobDataStore>();
+        var websiteDataStore = serviceProvider.GetRequiredService<WebsiteDataStore>();
 
         // Load baseline required data
         var games = await gameDataStore.LoadAll();
@@ -71,7 +75,9 @@ class Program
 
         // Run jobs until we're told to exit
         var jobRunner = serviceProvider.GetRequiredService<JobRunner>();
-        //jobRunner.RunJob(new UpdateGameRankingsJob(gameDataStore, gameSeriesDataStore));
-        await jobRunner.Start();
+        await jobRunner.RunJob(new UpdateCompanyWebsitesJob(websiteDataStore, companyDataStore));       
+        //await jobRunner.RunJob(new UpdateGameDetailsJob(gameDataStore));
+        //await jobRunner.RunJob(new UpdateGameRankingsJob(gameDataStore, gameSeriesDataStore));
+        //await jobRunner.Start();
     }
 }

@@ -10,6 +10,11 @@ namespace BizDevAgent.DataStore
         {
         }
 
+        protected override string GetKey(Job job)
+        {
+            return job.Name;
+        }
+
         protected override async Task<List<Job>> GetRemote()
         {
             return new List<Job>();

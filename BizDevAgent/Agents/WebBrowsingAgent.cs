@@ -3,6 +3,7 @@ using FluentResults;
 using Polly;
 using PuppeteerSharp;
 using System;
+using System.Diagnostics;
 
 namespace BizDevAgent.Agents
 {
@@ -33,6 +34,11 @@ namespace BizDevAgent.Agents
         public WebBrowsingAgent()
         {
             _random = new Random();
+        }
+
+        static WebBrowsingAgent()
+        {
+            TerminateChromeProcessesForTesting();
         }
 
         public async void Dispose()
@@ -155,5 +161,27 @@ namespace BizDevAgent.Agents
             return result;
         }
 
+        private static void TerminateChromeProcessesForTesting()
+        {
+            // PuppeteerSharp seems to leak chrome.exe processes, so we kill them manually.
+            foreach (var process in Process.GetProcessesByName("chrome"))
+            {
+                try
+                {
+                    if (!process.HasExited && process.MainModule.FileVersionInfo.FileDescription == "Google Chrome for Testing")
+                    {
+                        process.Kill();
+                        Console.WriteLine($"Terminated chrome.exe with PID: {process.Id}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Handle any exceptions, such as access denied
+                    Console.WriteLine($"Error terminating process {process.Id}: {ex.Message}");
+                }
+            }
+        }
     }
+
+
 }

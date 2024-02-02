@@ -4,44 +4,33 @@ using System.Data;
 using Newtonsoft.Json;
 using System.Reflection;
 using BizDevAgent.Model;
+using BizDevAgent.Agents;
 
 namespace BizDevAgent.DataStore
 {
     public class CompanyDataStore : FileDataStore<Company>
     {
-        public const string CachedFileName = "cached_companies.json";
+        public const string CachedFileName = "companies.json";
 
         public List<Company> Companies { get; private set; }
 
-        private JsonSerializerSettings _settings;
+        private readonly WebBrowsingAgent _browsingAgent;
 
-        public CompanyDataStore(string path) : base(path)
+        public CompanyDataStore(string path, WebBrowsingAgent browsingAgent) : base(path)
         {
-            var contractResolver = new Newtonsoft.Json.Serialization.DefaultContractResolver
-            {
-                IgnoreSerializableInterface = true,
-                IgnoreSerializableAttribute = true
-            };
-            contractResolver.DefaultMembersSearchFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            _browsingAgent = browsingAgent;
+        }
 
-            _settings = new JsonSerializerSettings
-            {
-                ContractResolver = contractResolver
-            };
+        protected override string GetKey(Company company)
+        {
+            return company.Name;
         }
 
         protected override async Task<List<Company>> GetRemote()
         {
-            // Initialize PuppeteerSharp
-            await new BrowserFetcher().DownloadAsync();
-            var browser = await Puppeteer.LaunchAsync(new LaunchOptions
-            {
-                Headless = true // Set false if you want to see the browser
-            });
-
             // Navigate to the Webpage
-            var page = await browser.NewPageAsync();
-            await page.GoToAsync("https://www.gamedevmap.com/index.php?location=&country=United%20States&state=&city=&query=&type=Developer&start=1&count=2000");
+            var result = await _browsingAgent.BrowsePage("https://www.gamedevmap.com/index.php?location=&country=United%20States&state=&city=&query=&type=Developer&start=1&count=2000");
+            var page = result.Value.Page;
 
             // Wait for the selector to ensure the elements are loaded
             await page.WaitForSelectorAsync("tr.row1");
@@ -89,9 +78,6 @@ namespace BizDevAgent.DataStore
                 companyCount++;
             }
             Console.WriteLine($"{companyCount} companies parsed.");
-
-            // Close the browser
-            await browser.CloseAsync();
 
             return companies;
         }

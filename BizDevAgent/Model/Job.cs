@@ -1,4 +1,5 @@
 ﻿using BizDevAgent.DataStore;
+using BizDevAgent.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 
@@ -27,6 +28,8 @@ namespace BizDevAgent.Model
 
         public static void RegisterAll(IServiceCollection services)
         {
+            services.AddTransient<JobRunner>();
+
             var assembly = Assembly.GetExecutingAssembly();
 
             // Find all types that are subclasses of Job and are not abstract

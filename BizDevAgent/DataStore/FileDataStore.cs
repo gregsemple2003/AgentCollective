@@ -8,7 +8,7 @@ namespace BizDevAgent.DataStore
     /// A data store where all entities are fetched from a remote endpoint (like a website) but 
     /// cached locally in a single JSON file.
     /// </summary>
-    public class FileDataStore<TEntity>
+    public abstract class FileDataStore<TEntity>
         where TEntity : class
     {
         private readonly string _fileName;
@@ -60,12 +60,15 @@ namespace BizDevAgent.DataStore
             // Get from the remote source
             var updated = await GetRemote();
 
-            foreach(var newObj in updated)
+            // We don't want to lose any data that we've built-up with the existing objects, and stored
+            // after long-running jobs have completed since its expensive to rebuild this information.
+            // So we only update non-default fields/properties from the list, otherwise we leave the 
+            // existing data untouched.
+            foreach (var newObj in updated)
             {
                 var existingObj = All.Find(o => GetKey(newObj) == GetKey(o));
                 if (existingObj != null)
                 {
-                    // Override non-default values in the newly-generated list
                     ObjectMerger.Merge(newObj, existingObj);
                 }
             }
@@ -105,14 +108,8 @@ namespace BizDevAgent.DataStore
             return all;
         }
 
-        protected virtual async Task<List<TEntity>> GetRemote()
-        {
-            throw new NotImplementedException();
-        }
+        protected abstract Task<List<TEntity>> GetRemote();
 
-        protected virtual string GetKey(TEntity entity)
-        {
-            throw new NotImplementedException();
-        }
+        protected abstract string GetKey(TEntity entity);
     }
 }

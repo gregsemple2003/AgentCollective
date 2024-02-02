@@ -31,10 +31,8 @@ namespace BizDevAgent.Jobs
 
         public async override Task Run()
         {
-            TerminateChromeProcessesForTesting();
-
             // Process companies until all websites are crawled.
-            var companies = _companyDataStore.All;
+            var companies = await _companyDataStore.LoadAll(forceRemote: true);
             var companyQueue = new ConcurrentQueue<Company>(companies);
 
             // Create a number of workers which drain the queue of work until empty
@@ -47,6 +45,11 @@ namespace BizDevAgent.Jobs
                     {
                         var website = await _websiteDataStore.Load(company.Url, $"{company.Index} / {companies.Count}");
                         company.Emails = website.ExtractedEmails;
+
+                        if (company.Emails.Count > 0)
+                        {
+                            _companyDataStore.SaveAll();
+                        }
                     }
                 }));
             }
@@ -57,28 +60,5 @@ namespace BizDevAgent.Jobs
             // Save any mutations in companies
             await _companyDataStore.SaveAll();
         }
-
-        private void TerminateChromeProcessesForTesting()
-        {
-            // PuppeteerSharp seems to leak chrome.exe processes, so we kill them manually.
-            foreach (var process in Process.GetProcessesByName("chrome"))
-            {
-                try
-                {
-                    if (process.MainModule.FileVersionInfo.FileDescription == "Google Chrome for Testing")
-                    {
-                        process.Kill();
-                        Console.WriteLine($"Terminated chrome.exe with PID: {process.Id}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Handle any exceptions, such as access denied
-                    Console.WriteLine($"Error terminating process {process.Id}: {ex.Message}");
-                }
-            }
-        }
-
-
     }
 }

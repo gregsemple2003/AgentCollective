@@ -17,6 +17,7 @@ public class PuppeteerWebsiteCrawler
     private readonly HashSet<string> _excludedExtensions;
     private readonly int _maxPagesToVisit;
     private readonly string _tag;
+    private IBrowser _browser;
     private int _pagesVisited = 0;
     private string _rootDomain;
     private string _rootScheme; // Store the scheme (http/https)
@@ -40,9 +41,16 @@ public class PuppeteerWebsiteCrawler
         ExtractedEmails = new List<string>();
     }
 
+    public async Task Stop()
+    {
+        if (_browser != null)
+        {
+            await _browser.CloseAsync();
+        }
+    }
+
     public async Task Start(string startUrl)
     {
-        IBrowser browser = null;
         try
         {
             var uri = new Uri(startUrl);
@@ -51,9 +59,9 @@ public class PuppeteerWebsiteCrawler
 
             await new BrowserFetcher().DownloadAsync();
             var options = new LaunchOptions { Headless = true };
-            browser = await Puppeteer.LaunchAsync(options);
+            _browser = await Puppeteer.LaunchAsync(options);
 
-            await VisitPageAsync(browser, startUrl);
+            await VisitPageAsync(_browser, startUrl);
         }
         catch (Exception ex)
         {
@@ -63,12 +71,8 @@ public class PuppeteerWebsiteCrawler
         }
         finally
         {
-            if (browser != null)
-            {
-                await browser.CloseAsync();
-            }
+            await Stop();
         }
-
     }
 
     private bool ShouldVisit(string url)
