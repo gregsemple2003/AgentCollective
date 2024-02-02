@@ -131,9 +131,6 @@ public class PuppeteerWebsiteCrawler
 
             throw ex;
         }
-
-
-        return null; // or throw an exception, based on how you want to handle invalid URLs
     }
 
     private async Task VisitPageAsync(IBrowser browser, string url)

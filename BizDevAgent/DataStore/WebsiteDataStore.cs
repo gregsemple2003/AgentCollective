@@ -8,7 +8,7 @@ namespace BizDevAgent.DataStore
         /// <summary>
         /// For debugging purposes, use to clear the cache.
         /// </summary>
-        public const bool ShouldWipeDatabase = false;
+        public static readonly bool ShouldWipeDatabase = false;
 
         private RocksDb _pageCacheDb;
 

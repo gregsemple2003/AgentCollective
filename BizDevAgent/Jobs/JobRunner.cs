@@ -113,7 +113,7 @@ namespace BizDevAgent.Jobs
                 // Execute the next job
                 if (nextJob != null && DateTime.Now > nextJob.ScheduledRunTime)
                 {
-                    RunJob(nextJob);
+                    await RunJob(nextJob);
                 }
 
                 await Task.Delay((int)SleepInterval.TotalMilliseconds); // Wait for a second before checking for the next job

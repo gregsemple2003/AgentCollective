@@ -15,9 +15,9 @@ namespace BizDevAgent.DataStore
             return job.Name;
         }
 
-        protected override async Task<List<Job>> GetRemote()
+        protected override Task<List<Job>> GetRemote()
         {
-            return new List<Job>();
+            return Task.FromResult(new List<Job>());
         }
 
         private static JsonSerializerSettings CreateJsonSerializerSettings(IServiceProvider serviceProvider)

@@ -9,7 +9,7 @@ namespace BizDevAgent.DataStore
         /// <summary>
         /// For debugging purposes, use to clear the cache.
         /// </summary>
-        public const bool ShouldWipeDatabase = false;
+        public static readonly bool ShouldWipeDatabase = false;
 
         /// <summary>
         /// All the series that have been loaded.
@@ -40,7 +40,7 @@ namespace BizDevAgent.DataStore
             }
         }
 
-        public async Task<List<GameSeries>> Load(int gameAppId, DateTime startTime, DateTime endTime)
+        public Task<List<GameSeries>> Load(int gameAppId, DateTime startTime, DateTime endTime)
         {
             var results = new List<GameSeries>();
 
@@ -56,7 +56,7 @@ namespace BizDevAgent.DataStore
                 }
             }
 
-            return results;
+            return Task.FromResult(results);
         }
 
         public void Add(GameSeries series)

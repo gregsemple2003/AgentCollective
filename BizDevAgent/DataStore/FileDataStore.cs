@@ -71,6 +71,10 @@ namespace BizDevAgent.DataStore
                 {
                     ObjectMerger.Merge(newObj, existingObj);
                 }
+                else
+                {
+                    All.Add(newObj);
+                }
             }
 
             // Save locally to speed up the next request

@@ -75,7 +75,11 @@ class Program
 
         // Run jobs until we're told to exit
         var jobRunner = serviceProvider.GetRequiredService<JobRunner>();
-        await jobRunner.RunJob(new UpdateCompanyWebsitesJob(websiteDataStore, companyDataStore));       
+        var visualStudioAgent = serviceProvider.GetRequiredService<VisualStudioAgent>();
+        var path = Environment.CurrentDirectory;
+        //visualStudioAgent.LoadProjectFiles();
+        //await jobRunner.RunJob(new ResearchCompanyJob(companyDataStore, serviceProvider.GetRequiredService<WebSearchAgent>()));
+        //await jobRunner.RunJob(new UpdateCompanyWebsitesJob(websiteDataStore, companyDataStore));       
         //await jobRunner.RunJob(new UpdateGameDetailsJob(gameDataStore));
         //await jobRunner.RunJob(new UpdateGameRankingsJob(gameDataStore, gameSeriesDataStore));
         //await jobRunner.Start();

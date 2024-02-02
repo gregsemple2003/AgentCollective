@@ -45,11 +45,6 @@ namespace BizDevAgent.Jobs
                     {
                         var website = await _websiteDataStore.Load(company.Url, $"{company.Index} / {companies.Count}");
                         company.Emails = website.ExtractedEmails;
-
-                        if (company.Emails.Count > 0)
-                        {
-                            _companyDataStore.SaveAll();
-                        }
                     }
                 }));
             }

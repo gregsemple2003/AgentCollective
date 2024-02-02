@@ -16,8 +16,6 @@ namespace BizDevAgent.Jobs
     [TypeId("UpdateGameRankingsJob")]
     public class UpdateGameRankingsJob : Job
     {
-        public DateTime LastRunTime { get; set; }
-
         public List<NewHighsEntry> NewHighs { get; set; }
 
         private readonly GameDataStore _gameDataStore;
@@ -79,7 +77,7 @@ namespace BizDevAgent.Jobs
             await EmailUtils.SendEmail("gregsemple2003@gmail.com", "Ranking Changes", sb.ToString());
         }
 
-        private async Task OnNewHigh(Game game, int highestBefore, int highestAfter)
+        private Task OnNewHigh(Game game, int highestBefore, int highestAfter)
         {
             // Log a rank change
             var beforeRanking = GetTierForReviewCount(highestBefore);
@@ -95,6 +93,8 @@ namespace BizDevAgent.Jobs
                 };
                 NewHighs.Add(newHigh);
             }
+
+            return Task.CompletedTask;
         }
 
         private string GetTierForReviewCount(int reviewCount)
