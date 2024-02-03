@@ -1,5 +1,4 @@
-﻿using BizDevAgent.Model;
-using BizDevAgent.DataStore;
+﻿using BizDevAgent.DataStore;
 
 namespace BizDevAgent.Jobs
 {

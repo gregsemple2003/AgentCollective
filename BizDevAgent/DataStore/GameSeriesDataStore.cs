@@ -4,40 +4,16 @@ using RocksDbSharp;
 
 namespace BizDevAgent.DataStore
 {
-    public class GameSeriesDataStore
+    public class GameSeriesDataStore : RocksDbDataStore<GameSeries>
     {
-        /// <summary>
-        /// For debugging purposes, use to clear the cache.
-        /// </summary>
-        public static readonly bool ShouldWipeDatabase = false;
-
-        /// <summary>
-        /// All the series that have been loaded.
-        /// </summary>
-        public List<GameSeries> All;
-
-        private RocksDb _db;
-
-        public GameSeriesDataStore(string path)
+        public GameSeriesDataStore(string path) : base(path, shouldWipe: false)
         {
-            var options = new DbOptions().SetCreateIfMissing(true);
-            Directory.CreateDirectory(path);
-            _db = RocksDb.Open(options, path);
+        }
 
-            All = new List<GameSeries>();
-
-            if (ShouldWipeDatabase)
-            {
-                using (var iterator = _db.NewIterator())
-                {
-                    iterator.SeekToFirst();
-                    while (iterator.Valid())
-                    {
-                        _db.Remove(iterator.Key());
-                        iterator.Next();
-                    }
-                }
-            }
+        protected override string GetKey(GameSeries series)
+        {
+            var key = $"{series.AppId}_{series.TimeGenerated.Year.ToString("D4")}_{series.TimeGenerated.Month.ToString("D2")}";
+            return key;
         }
 
         public Task<List<GameSeries>> Load(int gameAppId, DateTime startTime, DateTime endTime)
@@ -61,7 +37,7 @@ namespace BizDevAgent.DataStore
 
         public void Add(GameSeries series)
         {
-            var key = $"{series.AppId}_{series.TimeGenerated.Year.ToString("D4")}_{series.TimeGenerated.Month.ToString("D2")}";
+            var key = GetKey(series);
 
             if (_db.HasKey(key))
             {

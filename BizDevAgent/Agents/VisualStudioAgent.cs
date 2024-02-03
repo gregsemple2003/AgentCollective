@@ -3,34 +3,27 @@
 namespace BizDevAgent.Agents
 {
     public class ProjectFile
-    { 
+    {
         public string FileName { get; set; }
-        public string Contents {  get; set; }
+        public string Contents { get; set; }
     }
 
     public class VisualStudioAgent : Agent
     {
-        public Task<List<ProjectFile>> LoadProjectFiles(string projectFilePath)
+        public Task<List<ProjectFile>> LoadProjectFiles(string csprojPath)
         {
-            // Load the .csproj file
             var results = new List<ProjectFile>();
-            XDocument csprojDocument = XDocument.Load(projectFilePath);
 
-            // Define the namespace to access the elements
-            XNamespace msbuild = "http://schemas.microsoft.com/developer/msbuild/2003";
+            // In .NET 5 and beyond, all source files are implicitly contained in the project folder recursively
+            // without needing to explicitly mention each file.
+            var csFiles = Directory.GetFiles(csprojPath, "*.cs", SearchOption.AllDirectories);
 
-            // Iterate over all 'Compile', 'Content', and 'None' included files
-            var includedFiles = csprojDocument
-                .Element(msbuild + "Project")
-                ?.Elements(msbuild + "ItemGroup")
-                .SelectMany(itemGroup => itemGroup.Elements())
-                .Where(el => el.Name.LocalName == "Compile" || el.Name.LocalName == "Content" || el.Name.LocalName == "None")
-                .Select(el => el.Attribute("Include")?.Value);
-
-            // Perform an action with each included file path
-            foreach (var filePath in includedFiles)
+            foreach (var file in csFiles)
             {
-                Console.WriteLine(filePath);
+                var normalizedPath = Path.GetFullPath(file);
+                Console.WriteLine(normalizedPath); // Or any operation you want to perform with the file path
+                var contents = File.ReadAllText(normalizedPath);
+                results.Add(new ProjectFile { FileName = normalizedPath, Contents = contents});
             }
 
             return Task.FromResult(results);

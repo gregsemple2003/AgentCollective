@@ -23,5 +23,10 @@
             string documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             return Path.Combine(documentsPath, "BizDevAgent", "Config");
         }
+
+        public static string GetProjectPath()
+        {
+            return Path.Combine(Environment.CurrentDirectory, "..", "..", "..");
+        }
     }
 }

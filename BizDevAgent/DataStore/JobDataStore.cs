@@ -1,4 +1,4 @@
-﻿using BizDevAgent.Model;
+﻿using BizDevAgent.Jobs;
 using Newtonsoft.Json;
 
 namespace BizDevAgent.DataStore

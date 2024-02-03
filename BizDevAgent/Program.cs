@@ -1,14 +1,15 @@
-﻿using BizDevAgent.Model;
-using BizDevAgent.DataStore;
+﻿using BizDevAgent.DataStore;
 using BizDevAgent.Utilities;
 using BizDevAgent.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using BizDevAgent.Agents;
+using FluentResults;
 
 class Program
 {
     private static string GameSeriesDataPath => Path.Combine(Paths.GetDataPath(), "GameSeriesDB");
+    private static string SourceSummaryDataPath => Path.Combine(Paths.GetDataPath(), "SourceSummaryDB");    
     private static string GameDataPath => Path.Combine(Paths.GetDataPath(), "games.json");
     private static string JobDataPath => Path.Combine(Paths.GetDataPath(), "jobs.json");
     private static string CompanyDataPath => Path.Combine(Paths.GetDataPath(), "companies.json");
@@ -44,6 +45,10 @@ class Program
         {
             return new GameSeriesDataStore(GameSeriesDataPath);
         });
+        serviceCollection.AddSingleton<SourceSummaryDataStore>(serviceProvider =>
+        {
+            return new SourceSummaryDataStore(SourceSummaryDataPath);
+        });
         serviceCollection.AddSingleton<GameDataStore>(serviceProvider =>
         {
             var gameSeriesDataStore = serviceProvider.GetRequiredService<GameSeriesDataStore>();
@@ -62,6 +67,7 @@ class Program
         var companyDataStore = serviceProvider.GetRequiredService<CompanyDataStore>();
         var jobDataStore = serviceProvider.GetRequiredService<JobDataStore>();
         var websiteDataStore = serviceProvider.GetRequiredService<WebsiteDataStore>();
+        var sourceSummaryDataStore = serviceProvider.GetRequiredService<SourceSummaryDataStore>();
 
         // Load baseline required data
         var games = await gameDataStore.LoadAll();
@@ -76,8 +82,11 @@ class Program
         // Run jobs until we're told to exit
         var jobRunner = serviceProvider.GetRequiredService<JobRunner>();
         var visualStudioAgent = serviceProvider.GetRequiredService<VisualStudioAgent>();
-        var path = Environment.CurrentDirectory;
-        //visualStudioAgent.LoadProjectFiles();
+        var codeAnalysisAgent = serviceProvider.GetRequiredService<CodeAnalysisAgent>();
+        var languageAgent = serviceProvider.GetRequiredService<LanguageModelAgent>();
+
+        await jobRunner.RunJob(new UpdateSourceSummaryDatabaseJob(sourceSummaryDataStore, codeAnalysisAgent, visualStudioAgent, languageAgent));
+
         //await jobRunner.RunJob(new ResearchCompanyJob(companyDataStore, serviceProvider.GetRequiredService<WebSearchAgent>()));
         //await jobRunner.RunJob(new UpdateCompanyWebsitesJob(websiteDataStore, companyDataStore));       
         //await jobRunner.RunJob(new UpdateGameDetailsJob(gameDataStore));

@@ -21,11 +21,6 @@ namespace BizDevAgent.DataStore
             _browsingAgent = browsingAgent;
         }
 
-        protected override string GetKey(Company company)
-        {
-            return company.Name;
-        }
-
         protected override async Task<List<Company>> GetRemote()
         {
             // Navigate to the Webpage
@@ -80,6 +75,11 @@ namespace BizDevAgent.DataStore
             Console.WriteLine($"{companyCount} companies parsed.");
 
             return companies;
+        }
+
+        protected override string GetKey(Company company)
+        {
+            return company.Name;
         }
     }
 }

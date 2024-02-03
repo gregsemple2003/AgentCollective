@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using BizDevAgent.DataStore;
-using BizDevAgent.Model;
 
 namespace BizDevAgent.Jobs
 {

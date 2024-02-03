@@ -1,9 +1,8 @@
 ﻿using BizDevAgent.DataStore;
-using BizDevAgent.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 
-namespace BizDevAgent.Model
+namespace BizDevAgent.Jobs
 {
     /// <summary>
     /// A periodic job which runs to perform some task, usually to mutate persistent data.
