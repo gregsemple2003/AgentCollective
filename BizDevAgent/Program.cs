@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using BizDevAgent.Agents;
 using FluentResults;
+using System.Runtime;
+using System;
 
 class Program
 {
@@ -83,9 +85,30 @@ class Program
         var jobRunner = serviceProvider.GetRequiredService<JobRunner>();
         var visualStudioAgent = serviceProvider.GetRequiredService<VisualStudioAgent>();
         var codeAnalysisAgent = serviceProvider.GetRequiredService<CodeAnalysisAgent>();
+        var codeQueryAgent = serviceProvider.GetRequiredService<CodeQueryAgent>();
         var languageAgent = serviceProvider.GetRequiredService<LanguageModelAgent>();
 
-        await jobRunner.RunJob(new UpdateSourceSummaryDatabaseJob(sourceSummaryDataStore, codeAnalysisAgent, visualStudioAgent, languageAgent));
+        //var text = File.ReadAllText(Path.Combine(Paths.GetProjectPath(), "..", "actual.diff"));
+        //char[] charArray = text.ToCharArray();
+
+        //await codeQueryAgent.PrintModuleSummary();
+        //await codeQueryAgent.PrintFileSkeleton("FileDataStore.cs");
+        //await codeQueryAgent.PrintFileContents("FileDataStore.cs");
+        //await codeQueryAgent.PrintMatchingSourceLines("*.cs", "jsonconvert", caseSensitive: false, matchWholeWord: true);               
+
+        //await jobRunner.RunJob(new UpdateSourceSummaryDatabaseJob(sourceSummaryDataStore, codeAnalysisAgent, visualStudioAgent, languageAgent));
+        //await jobRunner.RunJob(new ProgrammerResearchJob(visualStudioAgent, serviceProvider, jobRunner));
+        var diffFilePath = Path.Combine(Paths.GetProjectPath(), "Jobs", "step_1.diff");
+        var diffFileContents = File.ReadAllText(diffFilePath);
+        if (!diffFileContents.EndsWith(" \n"))
+        {
+            diffFileContents += " \n"; // Append space followed by newline if not present
+        }
+
+        var modifiedDiffFilePath = Path.Combine(Path.GetDirectoryName(diffFilePath), Path.GetFileNameWithoutExtension(diffFilePath) + "_mod.diff");
+        File.WriteAllText(modifiedDiffFilePath, diffFileContents);
+
+        //await jobRunner.RunJob(new ProgrammerModifyCode(diffFileContents));
 
         //await jobRunner.RunJob(new ResearchCompanyJob(companyDataStore, serviceProvider.GetRequiredService<WebSearchAgent>()));
         //await jobRunner.RunJob(new UpdateCompanyWebsitesJob(websiteDataStore, companyDataStore));       

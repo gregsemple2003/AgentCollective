@@ -5,6 +5,12 @@ using Microsoft.Extensions.Configuration;
 
 namespace BizDevAgent.Jobs
 {
+    public struct JobRunResult
+    {
+        public string OutputStdOut {  get; set; }
+        public string OutputStdErr { get; set; }
+    }
+
     public class JobRunner
     {
         private bool _isRunning = true;
@@ -26,8 +32,9 @@ namespace BizDevAgent.Jobs
             _jobDataStore.All.Add(job);
         }
 
-        public async Task RunJob(Job job)
+        public async Task<JobRunResult> RunJob(Job job)
         {
+            var result = new JobRunResult();
             var originalOut = Console.Out;
             var originalError = Console.Error;
             var runId = Guid.NewGuid();
@@ -56,6 +63,8 @@ namespace BizDevAgent.Jobs
                     // Access captured output
                     string output = writerOut.CapturedOutput;
                     string error = writerError.CapturedOutput;
+                    result.OutputStdOut = output;
+                    result.OutputStdErr = error;
 
                     job.LastRunTime = DateTime.Now;
 
@@ -81,6 +90,7 @@ namespace BizDevAgent.Jobs
                 }
             }
 
+            return result;
         }
 
         public async Task Start()

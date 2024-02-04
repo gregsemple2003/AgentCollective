@@ -28,5 +28,10 @@
         {
             return Path.Combine(Environment.CurrentDirectory, "..", "..", "..");
         }
+
+        public static string GetSourceControlRootPath()
+        {
+            return Path.Combine(Paths.GetProjectPath(), "..");
+        }
     }
 }
