@@ -10,8 +10,7 @@ $networkFilePath = Join-Path -Path $networkFolderPath -ChildPath "BizDevAgent.zi
 
 # Ensure build output and zip directories exist
 if (-Not (Test-Path -Path $buildOutput)) {
-    Write-Error "Build output path does not exist: $buildOutput"
-    exit
+    New-Item -Path $buildOutput -ItemType Directory
 }
 if (-Not (Test-Path -Path $zipDir)) {
     New-Item -Path $zipDir -ItemType Directory
