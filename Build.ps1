@@ -18,9 +18,13 @@ if (-Not (Test-Path -Path $zipDir)) {
 
 # Build the project
 dotnet build "$projectPath\BizDevAgent.sln" --configuration Release
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # Zip the contents
 #Compress-Archive -Path "$buildOutput\*" -DestinationPath $zipFilePath -Force
 
 # Copy the zip to the network folder
 #Copy-Item -Path $zipFilePath -Destination $networkFilePath -Force
+
+# If script reaches this point without exiting, it means all operations were successful.
+exit 0
