@@ -20,7 +20,7 @@ if (-Not (Test-Path -Path $zipDir)) {
 dotnet build "$projectPath\BizDevAgent.sln" --configuration Release
 
 # Zip the contents
-Compress-Archive -Path "$buildOutput\*" -DestinationPath $zipFilePath -Force
+#Compress-Archive -Path "$buildOutput\*" -DestinationPath $zipFilePath -Force
 
 # Copy the zip to the network folder
-Copy-Item -Path $zipFilePath -Destination $networkFilePath -Force
+#Copy-Item -Path $zipFilePath -Destination $networkFilePath -Force
