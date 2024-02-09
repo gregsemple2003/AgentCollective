@@ -24,6 +24,12 @@
             return Path.Combine(documentsPath, "BizDevAgent", "Config");
         }
 
+        public static string GetAssetsPath()
+        {
+            string projectPath = GetProjectPath();
+            return Path.Combine(projectPath, "Assets");
+        }
+
         public static string GetProjectPath()
         {
             return Path.Combine(Environment.CurrentDirectory, "..", "..", "..");

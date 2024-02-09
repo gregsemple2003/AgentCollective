@@ -10,7 +10,7 @@ using AngleSharp.Dom;
 
 namespace BizDevAgent.DataStore
 {
-    public class GameDataStore : FileDataStore<Game>
+    public class GameDataStore : SingleFileDataStore<Game>
     {
         private readonly GameSeriesDataStore _seriesDataStore;
         private readonly WebBrowsingAgent _browsingAgent;

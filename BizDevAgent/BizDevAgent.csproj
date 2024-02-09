@@ -8,6 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Config\**" />
+    <EmbeddedResource Remove="Config\**" />
+    <None Remove="Config\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Abot" Version="2.0.70" />
     <PackageReference Include="FluentResults" Version="3.15.2" />
     <PackageReference Include="Handlebars.Net" Version="2.1.4" />
@@ -26,16 +32,9 @@
     <PackageReference Include="RocksDB" Version="8.9.1.44603" />
     <PackageReference Include="Rystem.OpenAi" Version="3.3.11" />
   </ItemGroup>
-  
-  <ItemGroup>
-  <Content Include="Config\appsettings.json">
-    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-  </Content>
-</ItemGroup>
 
 <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="xcopy &quot;$(ProjectDir)Config\appsettings.json&quot; &quot;$(UserProfile)\Documents\BizDevAgent\Config\&quot; /Y" />
+    <Exec Command="xcopy &quot;$(ProjectDir)Assets\appsettings.json&quot; &quot;$(UserProfile)\Documents\BizDevAgent\Config\&quot; /Y" />
 </Target>
 
 

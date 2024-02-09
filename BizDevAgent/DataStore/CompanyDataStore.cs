@@ -8,7 +8,7 @@ using BizDevAgent.Agents;
 
 namespace BizDevAgent.DataStore
 {
-    public class CompanyDataStore : FileDataStore<Company>
+    public class CompanyDataStore : SingleFileDataStore<Company>
     {
         public const string CachedFileName = "companies.json";
 

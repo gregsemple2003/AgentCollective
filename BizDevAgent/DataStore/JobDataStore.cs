@@ -3,7 +3,7 @@ using Newtonsoft.Json;
 
 namespace BizDevAgent.DataStore
 {
-    public class JobDataStore : FileDataStore<Job>
+    public class JobDataStore : SingleFileDataStore<Job>
     {
         public JobDataStore(string path, IServiceProvider serviceProvider)
             : base(path, CreateJsonSerializerSettings(serviceProvider))

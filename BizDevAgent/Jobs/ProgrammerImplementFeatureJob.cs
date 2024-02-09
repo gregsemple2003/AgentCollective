@@ -17,49 +17,32 @@ namespace BizDevAgent.Jobs
         public string FeatureSpecification { get; set; }
         public IBuildAgent BuildAgent { get; set; }
 
-
         private readonly GitAgent _gitAgent;
         private readonly CodeQueryAgent _codeQueryAgent;
+        private readonly CodeAnalysisAgent _codeAnalysisAgent;
+        private readonly AssetDataStore _assetDataStore;
 
-        public ProgrammerImplementFeatureJob(GitAgent gitAgent, CodeQueryAgent codeQueryAgent)
+        public ProgrammerImplementFeatureJob(GitAgent gitAgent, CodeQueryAgent codeQueryAgent, CodeAnalysisAgent codeAnalysisAgent, AssetDataStore assetDataStore)
         {
             _gitAgent = gitAgent;
             _codeQueryAgent = codeQueryAgent;
+            _codeAnalysisAgent = codeAnalysisAgent;
+            _assetDataStore = assetDataStore;
         }
 
         public async override Task Run()
         {
-            // Create a test prompt
-            var promptData = new PromptData
-            {
-                Observations = new List<AgentObservation>
-                {
-                    new AgentObservation { ObservationIndex = 1, ObservationDetail = "implementation_plan = {}" },
-                },
-                Actions = new List<AgentAction>
-                {
-                    new AgentAction { ActionIndex = 1, OptionTitle = "Refactor serialization", OptionDescription = "Change serialization method from JSON to XML." },
-                }
-            };
-            var promptTemplatePath = Path.Combine(Paths.GetProjectPath(), "Config", "Templates", "Goal_RefineImplementationPlan.txt");
-            var promptTemplate = File.ReadAllText(promptTemplatePath);
-            var promptBuilder = new PromptBuilder(promptTemplate);
-            var prompt = promptBuilder.Evaluate(promptData);
+            // Define workflow
+            var goalTree = CreateImplementFeatureTree();
 
-            // Create a test goal hierarchy
-            var goalTree = new AgentGoal("Implement Feature")
-            {
-                SubGoals = new List<AgentGoal>
-                {
-                    new AgentGoal("Create Implementation Plan"),
+            // Instantiate agent
+            var agentState = new AgentState();
+            agentState.Variables.Add(new AgentVariable { Name = "ImplementationPlan", Value = "{}" });
+            agentState.Goals.Push(goalTree);
+            agentState.Goals.Push(goalTree.SubGoals[0]);
 
-                    new AgentGoal("Modify Repository"),
-
-                    new AgentGoal("Write Unit Tests"),
-                }
-            };
-
-            var codeQuerySession = _codeQueryAgent.CreateSession(LocalRepoPath);
+            // Generate prompt for current state
+            var prompt = await GeneratePrompt(agentState);
 
             // Clone the repository
             if (!Directory.Exists(LocalRepoPath))
@@ -71,14 +54,74 @@ namespace BizDevAgent.Jobs
                 }
             }
 
-            // Build and report errors
-            var buildResult = await BuildRepository(codeQuerySession);
-            if (buildResult.IsFailed) 
-            { 
-                throw new NotImplementedException("The build failed, we don't deal with that yet.");
+            //// Build and report errors
+            //var codeQuerySession = _codeQueryAgent.CreateSession(LocalRepoPath);
+            //var buildResult = await BuildRepository(codeQuerySession);
+            //if (buildResult.IsFailed)
+            //{
+            //    throw new NotImplementedException("The build failed, we don't deal with that yet.");
+            //}
+        }
+
+        private async Task<string> GenerateCodeQueryApi()
+        {
+            var codeQuerySession = _codeQueryAgent.CreateSession(Paths.GetSourceControlRootPath());
+            var projectFile = await codeQuerySession.FindFileInRepo("CodeQueryAgent.cs", logError: false);
+            var codeQueryApi = _codeAnalysisAgent.GeneratePublicApiSkeleton(projectFile.Contents);
+            return codeQueryApi;
+        }
+
+        private async Task<string> GeneratePrompt(AgentState agentState)
+        {
+            var codeQuerySessionApi = await GenerateCodeQueryApi();
+            var currentGoal = agentState.Goals.Peek();
+            var promptContext = new PromptContext();
+            promptContext.AdditionalData["CodeQuerySessionApi"] = codeQuerySessionApi;
+            promptContext.Variables = agentState.Variables;
+            foreach (var baselineAction in currentGoal.BaselineActions)
+            {
+                baselineAction.Bind(promptContext);
+                promptContext.Actions.Add(baselineAction);
             }
+            for (var actionIndex = 0; actionIndex < promptContext.Actions.Count; actionIndex++)
+            {
+                var action = promptContext.Actions[actionIndex];
+                action.Index = (actionIndex + 1);
+            }
+            var prompt = currentGoal.PromptBuilder.Evaluate(promptContext);
+            return prompt;
+        }
 
+        private AgentGoalAsset CreateImplementFeatureTree()
+        {
+            // Create a test goal hierarchy
+            return new AgentGoalAsset("Implement Feature")
+            {
+                SubGoals = new List<AgentGoalAsset>
+                {
+                    new AgentGoalAsset("Create Implementation Plan")
+                    {
+                        PromptBuilder = AssetRef<PromptAsset>("Goal_RefineImplementationPlan"),
+                        BaselineActions = new List<AgentActionAsset>
+                        {
+                            AssetRef<AgentActionAsset>("RefineImplementationPlan"),
+                            AssetRef<AgentActionAsset>("ResearchCode"),
+                            AssetRef<AgentActionAsset>("RequestHelp")
+                        }
+                    },
 
+                    new AgentGoalAsset("Modify Repository"),
+
+                    new AgentGoalAsset("Write Unit Tests"),
+                }
+            };
+        }
+
+        // TODO gsemple: remove, need to implement asset references in json
+        private TAsset AssetRef<TAsset>(string assetName) where TAsset : Asset
+        {
+            var asset = _assetDataStore.Get(assetName).GetAwaiter().GetResult();
+            return (TAsset) asset;
         }
 
         private async Task<Result<BuildResult>> BuildRepository(CodeQuerySession codeQuerySession)

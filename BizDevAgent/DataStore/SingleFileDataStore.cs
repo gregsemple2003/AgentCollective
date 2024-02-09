@@ -8,7 +8,7 @@ namespace BizDevAgent.DataStore
     /// A data store where all entities are fetched from a remote endpoint (like a website) but 
     /// cached locally in a single JSON file.
     /// </summary>
-    public abstract class FileDataStore<TEntity>
+    public abstract class SingleFileDataStore<TEntity>
         where TEntity : class
     {
         private readonly string _fileName;
@@ -17,7 +17,7 @@ namespace BizDevAgent.DataStore
 
         private readonly JsonSerializerSettings _settings;
 
-        public FileDataStore(string fileName, JsonSerializerSettings settings = null)
+        public SingleFileDataStore(string fileName, JsonSerializerSettings settings = null)
         {
             _fileName = fileName;
 

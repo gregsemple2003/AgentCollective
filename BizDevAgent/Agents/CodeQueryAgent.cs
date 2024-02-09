@@ -189,7 +189,8 @@ namespace BizDevAgent.Agents
             }
         }
 
-        private async Task<RepositoryFile> FindFileInRepo(string fileName, bool logError = true)
+        // TODO gsemple: hide this from the research api
+        public async Task<RepositoryFile> FindFileInRepo(string fileName, bool logError = true)
         {
             var repoFiles = await GetCachedRepoFiles(_localRepoPath);
             var repoFile = repoFiles.Find(x => Path.GetFileName(x.FileName) == Path.GetFileName(fileName));

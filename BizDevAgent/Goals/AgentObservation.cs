@@ -1,8 +1,9 @@
-﻿namespace BizDevAgent.Goals
+﻿using BizDevAgent.DataStore;
+
+namespace BizDevAgent.Goals
 {
     public class AgentObservation
     {
-        public int ObservationIndex { get; set; }
-        public string ObservationDetail { get; set; }
+        public string Description { get; set; }
     }
 }

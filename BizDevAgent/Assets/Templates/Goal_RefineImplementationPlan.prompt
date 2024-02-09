@@ -23,14 +23,24 @@ The implementation plan should be in JSON.  As an example:
 
 FEATURE
 
-The feature is to save entities in XML instead of JSON.  
+The feature is to save entities in XML instead of JSON.
+
+STATE
+
+So far, you have concluded the following:
+
+{{#each Variables}}
+{{Name}} = {{Value}}
+
+{{/each}}
 
 OBSERVATIONS
 
 You already know the following things about the project: 
 
-{{#each Observations}}
-Observation {{ObservationIndex}}: {{ObservationDetail}}
+{{#each Observation}}
+{{Description}}
+
 {{/each}}
 
 ACTIONS
@@ -38,6 +48,7 @@ ACTIONS
 You can take ONLY ONE of the following actions.  Take the action that advances you best towards reaching the final goal of carefully implementing the given feature.
 
 {{#each Actions}}
-Action {{ActionIndex}}: {{OptionTitle}}
-{{OptionDescription}}
+Action {{Index}}: {{Title}}
+{{Description}}
+
 {{/each}}

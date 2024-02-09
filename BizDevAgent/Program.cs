@@ -16,6 +16,8 @@ class Program
     private static string JobDataPath => Path.Combine(Paths.GetDataPath(), "jobs.json");
     private static string CompanyDataPath => Path.Combine(Paths.GetDataPath(), "companies.json");
     private static string WebsiteDataPath => Path.Combine(Paths.GetDataPath(), "CrawlerCacheDB");
+    private static string AssetDataPath => Paths.GetAssetsPath();
+
 
     public static async Task Main()
     {
@@ -30,6 +32,10 @@ class Program
         serviceCollection.AddSingleton<IConfiguration>(configuration);
 
         // Register data stores
+        serviceCollection.AddSingleton<AssetDataStore>(serviceProvider =>
+        {
+            return new AssetDataStore(AssetDataPath, serviceProvider);
+        });
         serviceCollection.AddSingleton<WebsiteDataStore>(serviceProvider =>
         {
             return new WebsiteDataStore(WebsiteDataPath);
@@ -70,6 +76,13 @@ class Program
         var jobDataStore = serviceProvider.GetRequiredService<JobDataStore>();
         var websiteDataStore = serviceProvider.GetRequiredService<WebsiteDataStore>();
         var sourceSummaryDataStore = serviceProvider.GetRequiredService<SourceSummaryDataStore>();
+        var jobRunner = serviceProvider.GetRequiredService<JobRunner>();
+        var visualStudioAgent = serviceProvider.GetRequiredService<VisualStudioAgent>();
+        var codeAnalysisAgent = serviceProvider.GetRequiredService<CodeAnalysisAgent>();
+        var codeQueryAgent = serviceProvider.GetRequiredService<CodeQueryAgent>();
+        var languageAgent = serviceProvider.GetRequiredService<LanguageModelAgent>();
+        var gitAgent = serviceProvider.GetRequiredService<GitAgent>();
+        var assetDataStore = serviceProvider.GetRequiredService<AssetDataStore>();
 
         // Load baseline required data
         var games = await gameDataStore.LoadAll();
@@ -82,14 +95,9 @@ class Program
         var jobs = await jobDataStore.LoadAll();
 
         // Run jobs until we're told to exit
-        var jobRunner = serviceProvider.GetRequiredService<JobRunner>();
-        var visualStudioAgent = serviceProvider.GetRequiredService<VisualStudioAgent>();
-        var codeAnalysisAgent = serviceProvider.GetRequiredService<CodeAnalysisAgent>();
-        var codeQueryAgent = serviceProvider.GetRequiredService<CodeQueryAgent>();
-        var languageAgent = serviceProvider.GetRequiredService<LanguageModelAgent>();
-        var gitAgent = serviceProvider.GetRequiredService<GitAgent>();
 
-        await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitAgent, codeQueryAgent)
+
+        await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitAgent, codeQueryAgent, codeAnalysisAgent, assetDataStore)
         {
             GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
             LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",

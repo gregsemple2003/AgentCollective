@@ -44,8 +44,9 @@ namespace BizDevAgent.DataStore
         }
 
         public override bool CanConvert(Type type)
-        {            
-            return GetTypeId(type) != string.Empty;
+        {          
+            var typeId = GetTypeId(type);
+            return typeId != string.Empty;
         }
 
         private static void GatherAllClassesWithTypeId()
