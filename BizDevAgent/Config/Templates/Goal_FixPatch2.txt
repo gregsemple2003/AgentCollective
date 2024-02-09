@@ -1,0 +1,2 @@
+In that snippet you gave me, the <ADDED> line did in fact have a line number, namely <X>.
+

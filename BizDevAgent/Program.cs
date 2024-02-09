@@ -87,29 +87,20 @@ class Program
         var codeAnalysisAgent = serviceProvider.GetRequiredService<CodeAnalysisAgent>();
         var codeQueryAgent = serviceProvider.GetRequiredService<CodeQueryAgent>();
         var languageAgent = serviceProvider.GetRequiredService<LanguageModelAgent>();
+        var gitAgent = serviceProvider.GetRequiredService<GitAgent>();
 
-        //var text = File.ReadAllText(Path.Combine(Paths.GetProjectPath(), "..", "actual.diff"));
-        //char[] charArray = text.ToCharArray();
-
-        //await codeQueryAgent.PrintModuleSummary();
-        //await codeQueryAgent.PrintFileSkeleton("FileDataStore.cs");
-        //await codeQueryAgent.PrintFileContents("FileDataStore.cs");
-        //await codeQueryAgent.PrintMatchingSourceLines("*.cs", "jsonconvert", caseSensitive: false, matchWholeWord: true);               
-
-        //await jobRunner.RunJob(new UpdateSourceSummaryDatabaseJob(sourceSummaryDataStore, codeAnalysisAgent, visualStudioAgent, languageAgent));
-        //await jobRunner.RunJob(new ProgrammerResearchJob(visualStudioAgent, serviceProvider, jobRunner));
-        var diffFilePath = Path.Combine(Paths.GetProjectPath(), "Jobs", "step_1.diff");
-        var diffFileContents = File.ReadAllText(diffFilePath);
-        if (!diffFileContents.EndsWith(" \n"))
+        await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitAgent, codeQueryAgent)
         {
-            diffFileContents += " \n"; // Append space followed by newline if not present
-        }
-
-        var modifiedDiffFilePath = Path.Combine(Path.GetDirectoryName(diffFilePath), Path.GetFileNameWithoutExtension(diffFilePath) + "_mod.diff");
-        File.WriteAllText(modifiedDiffFilePath, diffFileContents);
-
-        //await jobRunner.RunJob(new ProgrammerModifyCode(diffFileContents));
-
+            GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
+            LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",
+            FeatureSpecification = @"Convert any data saving functionality from JSON to XML.",
+            BuildAgent = new BatchFileBuildAgent
+            {
+                ScriptPath = "Build.bat"
+            }
+        });
+        //await jobRunner.RunJob(new ProgrammerResearchJob(visualStudioAgent, serviceProvider, jobRunner));
+        //await jobRunner.RunJob(new ProgrammerModifyCode(gitAgent, diffFileContents));
         //await jobRunner.RunJob(new ResearchCompanyJob(companyDataStore, serviceProvider.GetRequiredService<WebSearchAgent>()));
         //await jobRunner.RunJob(new UpdateCompanyWebsitesJob(websiteDataStore, companyDataStore));       
         //await jobRunner.RunJob(new UpdateGameDetailsJob(gameDataStore));

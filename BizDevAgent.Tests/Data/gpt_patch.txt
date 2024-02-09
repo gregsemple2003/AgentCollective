@@ -1,0 +1,11 @@
+92:         private async Task SaveLocal()
+93:         {
+             Console.WriteLine("Hello"); <ADDED>
+             Console.WriteLine("Hello"); <ADDED>
+             Console.WriteLine("Hello"); <ADDED>
+94:             var json = JsonConvert.SerializeObject(All, Formatting.Indented, _settings); <DELETED>
+95:             await File.WriteAllTextAsync(_fileName, json); <DELETED>
+96:         }
+97: 
+98:         private async Task<List<TEntity>> GetLocal()
+99:         {

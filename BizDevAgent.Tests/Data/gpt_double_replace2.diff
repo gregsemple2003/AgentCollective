@@ -1,0 +1,30 @@
+diff --git a/BizDevAgent/DataStore/FileDataStore.cs b/BizDevAgent/DataStore/FileDataStore.cs
+index 4f0f176..739c7ad 100644
+--- a/BizDevAgent/DataStore/FileDataStore.cs
++++ b/BizDevAgent/DataStore/FileDataStore.cs
+@@ -92,10 +92,6 @@ namespace BizDevAgent.DataStore
+         private async Task SaveLocal()
+         {
+-            var json = JsonConvert.SerializeObject(All, Formatting.Indented, _settings);
+-            await File.WriteAllTextAsync(_fileName, json);
++            // Method body removed
+         }
+ 
+@@ -98,15 +94,7 @@ namespace BizDevAgent.DataStore
+         private async Task<List<TEntity>> GetLocal()
+         {
+-            // Check if the file exists
+-            if (!File.Exists(_fileName))
+-            {
+-                // Return an empty list or handle accordingly
+-                return null;
+-            }
+-
+-            // Read the file content
+-            var json = await File.ReadAllTextAsync(_fileName);
+-
+-            // Deserialize the JSON content back into a List<Company>
+-            var all = JsonConvert.DeserializeObject<List<TEntity>>(json, _settings);
+-            return all;
++            // Method body removed
+         }

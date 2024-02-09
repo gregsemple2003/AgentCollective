@@ -6,12 +6,6 @@ using BizDevAgent.Jobs;
 
 namespace BizDevAgent.Agents
 {
-    public class ProjectFile
-    {
-        public string FileName { get; set; }
-        public string Contents { get; set; }
-    }
-
     public class DynamicCompiler
     {
         public Assembly CompileAndLoadAssembly(string code)
@@ -58,9 +52,9 @@ namespace BizDevAgent.Agents
 
     public class VisualStudioAgent : Agent
     {
-        public Task<List<ProjectFile>> LoadProjectFiles(string csprojPath)
+        public Task<List<RepositoryFile>> LoadProjectFiles(string csprojPath)
         {
-            var results = new List<ProjectFile>();
+            var results = new List<RepositoryFile>();
 
             // In .NET 5 and beyond, all source files are implicitly contained in the project folder recursively
             // without needing to explicitly mention each file.
@@ -70,7 +64,7 @@ namespace BizDevAgent.Agents
             {
                 var normalizedPath = Path.GetFullPath(file);
                 var contents = File.ReadAllText(normalizedPath);
-                results.Add(new ProjectFile { FileName = normalizedPath, Contents = contents});
+                results.Add(new RepositoryFile { FileName = normalizedPath, Contents = contents});
             }
 
             return Task.FromResult(results);

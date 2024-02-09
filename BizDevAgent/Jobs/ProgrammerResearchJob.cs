@@ -23,6 +23,7 @@ namespace BizDevAgent.Jobs
             _serviceProvider = serviceProvider;
             _jobRunner = jobRunner;
         }
+
         public async override Task Run()
         {
             var codePath = Path.Combine(Paths.GetSourceControlRootPath(), "BizDevAgent", "Jobs", "Injected", "CodeResearchJob_ImplementXMLSerialization.txt");

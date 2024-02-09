@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Abot" Version="2.0.70" />
     <PackageReference Include="FluentResults" Version="3.15.2" />
+    <PackageReference Include="Handlebars.Net" Version="2.1.4" />
     <PackageReference Include="HtmlAgilityPack" Version="1.11.57" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.8.0" />
@@ -24,10 +25,6 @@
     <PackageReference Include="PuppeteerSharp" Version="13.0.2" />
     <PackageReference Include="RocksDB" Version="8.9.1.44603" />
     <PackageReference Include="Rystem.OpenAi" Version="3.3.11" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Config\" />
   </ItemGroup>
   
   <ItemGroup>

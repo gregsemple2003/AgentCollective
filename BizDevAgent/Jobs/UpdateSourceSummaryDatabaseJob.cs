@@ -84,7 +84,7 @@ namespace BizDevAgent.Jobs
             Console.Write($"Module summary complete, totalSourceSize = {totalSourceSize}, detailedSummarySourceSize = {detailedSummarySourceSize}");
         }
 
-        private async Task<SourceSummary> BuildFileSummary(ProjectFile projectFile, string fileName, SourceSummary fileSummary)
+        private async Task<SourceSummary> BuildFileSummary(RepositoryFile projectFile, string fileName, SourceSummary fileSummary)
         {
             Func<string, string, Task<string>> transformMethodBody = async (originalMethodText, originalBody) =>
             {

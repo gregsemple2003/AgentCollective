@@ -1,0 +1,43 @@
+GOAL
+
+You are being tasked with the job to implement a feature in C# by modifying an existing repository.  
+
+Your goal is to create or refine an implementation plan, which are step-by-step instructions on exactly which classes or methods to modify and how.
+
+The implementation plan should be in JSON.  As an example:
+
+[
+	{
+	  "Step" : 1
+		"Description" : "Add a new field to X class.  The new field is responsible for Y."
+	},
+	{
+	  "Step" : 2
+		"Description" : "Add ClassY.MethodX method which does <insert brief description>."
+	},
+	{
+	  "Step" : 3
+		"Description" : "Modify ClassY.MethodY to do example1, example2, example3."
+	}
+]
+
+FEATURE
+
+The feature is to save entities in XML instead of JSON.  
+
+OBSERVATIONS
+
+You already know the following things about the project: 
+
+{{#each Observations}}
+Observation {{ObservationIndex}}: {{ObservationDetail}}
+{{/each}}
+
+ACTIONS
+
+You can take ONLY ONE of the following actions.  Take the action that advances you best towards reaching the final goal of carefully implementing the given feature.
+
+{{#each Actions}}
+Action {{ActionIndex}}: {{OptionTitle}}
+{{OptionDescription}}
+{{/each}}

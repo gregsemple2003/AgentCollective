@@ -1,0 +1,35 @@
+You have already been given the task to implement unit tests in the following manner.  
+
+[
+  {
+    "method": "ApplyCustomPatch",
+    "testCases": [
+      {
+        "description": "Apply a patch with added and modified lines to a file",
+        "input": {
+          "patch": "patch indicating lines to be added and modified",
+          "fileContents": "original file content"
+        },
+        "expectedBehavior": "file contents with the patch applied correctly"
+      },
+      {
+        "description": "Apply an empty patch to a file",
+        "input": {
+          "patch": "",
+          "fileContents": "original file content"
+        },
+        "expectedBehavior": "original file contents unchanged"
+      },
+      {
+        "description": "Apply a patch with invalid line numbers",
+        "input": {
+          "patch": "patch with line numbers exceeding file length",
+          "fileContents": "original file content"
+        },
+        "expectedBehavior": "proper handling of invalid lines, potentially throwing an exception or ignoring invalid lines"
+      }
+    ]
+  }
+]
+
+Please implement testCases[{{testIndex}}] for method "ApplyCustomPatch".

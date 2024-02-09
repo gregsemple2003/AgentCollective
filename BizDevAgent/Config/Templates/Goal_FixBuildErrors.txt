@@ -1,0 +1,17 @@
+When compiling the project, we received the following compiler errors.  We've included source code around the site of the error.
+
+{{outputCompileErrors}}
+
+You can perform only one of several options.
+
+OPTION 1: RESEARCH THE CODE
+
+{{optionResearchCode}}
+
+OPTION 2: MODIFY THE CODE 
+
+{{optionModifyCode}}
+
+OPTION 3: FEATURE REQUEST 
+
+{{optionFeatureRequest}}

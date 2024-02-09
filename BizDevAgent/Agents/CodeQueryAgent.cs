@@ -4,30 +4,32 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp;
 using System.Text.RegularExpressions;
 using static System.Net.Mime.MediaTypeNames;
+using System.Drawing.Printing;
 
 namespace BizDevAgent.Agents
 {
     /// <summary>
-    /// An agent that is called by LLMs with a simple API that dumps information to the console, and can 
-    /// be piped back into prompts for the LLM to make decisions.  This isn't normally used directly by
-    /// application code.  It is used by LLMs when preparing an implementation plan to modify source
-    /// code.
+    /// Handles a code query session for a specific local repository.
     /// </summary>
-    public class CodeQueryAgent : Agent
+    public class CodeQuerySession
     {
         private readonly SourceSummaryDataStore _sourceSummaryDataStore;
-        private readonly VisualStudioAgent _visualStudioAgent;
-        private List<ProjectFile> _projectFiles;
+        private readonly CodeQueryAgent _codeQueryAgent;
+        private readonly GitAgent _gitAgent;
+        private readonly string _localRepoPath;
+        private List<RepositoryFile> _repoFiles;
         private Dictionary<string, string[]> _fileLinesCache = new Dictionary<string, string[]>();
 
-        public CodeQueryAgent(SourceSummaryDataStore sourceSummaryDataStore, VisualStudioAgent visualStudioAgent)
+        public CodeQuerySession(CodeQueryAgent codeQueryAgent, GitAgent gitAgent, SourceSummaryDataStore sourceSummaryDataStore, string localRepoPath)
         {
+            _codeQueryAgent = codeQueryAgent;
+            _gitAgent = gitAgent;
             _sourceSummaryDataStore = sourceSummaryDataStore;
-            _visualStudioAgent = visualStudioAgent;
+            _localRepoPath = localRepoPath;
         }
 
         // Prints the names of all files and a short description about each
-        public async Task PrintModuleSummary()
+        public async Task PrintModuleSummary(string localRepoPath)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintModuleSummary)}:");
 
@@ -35,20 +37,18 @@ namespace BizDevAgent.Agents
             var sourceSummary = await _sourceSummaryDataStore.Get(Paths.GetProjectPath());
             PrintEndOutputWithMessage($"{sourceSummary.DetailedSummary}");
         }
-
         // Prints the C# code skeleton of the specified file, stripped of method bodies but including comments
-        public async Task PrintFileSkeleton(string fileName)
+        public async Task PrintFileSkeleton(string localRepoPath, string fileName)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileSkeleton)}(fileName = {fileName}):");
 
-            var projectFile = await GetCachedProjectFile(fileName);
-            if (projectFile == null) 
+            var repoFile = await FindFileInRepo(fileName);
+            if (repoFile == null)
             {
-                PrintEndOutputWithMessage($"ERROR: Could not find file in project named '{fileName}'");
                 return;
             }
 
-            var sourceSummary = await _sourceSummaryDataStore.Get(projectFile.FileName);
+            var sourceSummary = await _sourceSummaryDataStore.Get(repoFile.FileName);
             PrintEndOutputWithMessage($"{sourceSummary.DetailedSummary}");
         }
 
@@ -57,16 +57,29 @@ namespace BizDevAgent.Agents
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileContents)}(fileName = {fileName}):");
 
-            var projectPath = Paths.GetProjectPath();
-            var projectFiles = await GetCachedProjectFiles(projectPath);
-            var projectFile = projectFiles.Find(x => Path.GetFileName(x.FileName) == Path.GetFileName(fileName)); // TODO gsemple: source code relative path?
-            if (projectFile == null)
+            var repoFile = await FindFileInRepo(fileName);
+            if (repoFile == null)
             {
-                PrintEndOutputWithMessage($"ERROR: Could not find file in project named '{fileName}'");
                 return;
             }
 
-            PrintEndOutputWithMessage(projectFile.Contents);
+            await PrintContentAll(repoFile.Contents, 1);
+            PrintEndOutputWithMessage();
+        }
+
+        // Prints the file at the specified lineNumber with linesToInclude above the specified lineNumber, as well as linesToInclude below.
+        public async Task PrintFileContentsAroundLine(string fileName, int lineNumber, int linesToInclude)
+        {
+            Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileContents)}(fileName = {fileName}):");
+
+            var repoFile = await FindFileInRepo(fileName);
+            if (repoFile == null)
+            {
+                return;
+            }
+
+            await PrintContentAroundLine(repoFile.Contents, lineNumber, linesToInclude);
+            PrintEndOutputWithMessage();
         }
 
         // Prints lines from files matching the specified pattern that contain the specified text.
@@ -75,10 +88,7 @@ namespace BizDevAgent.Agents
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintMatchingSourceLines)}(fileMatchingPattern = {fileMatchingPattern}, text = {text}, caseSensitive = {caseSensitive}, matchWholeWord = {matchWholeWord}):");
 
-            if (_projectFiles == null || !_projectFiles.Any())
-            {
-                await GetCachedProjectFiles(Paths.GetProjectPath());
-            }
+            await GetCachedRepoFiles(Paths.GetProjectPath());
 
             var regexPattern = "^" + Regex.Escape(fileMatchingPattern).Replace("\\*", ".*").Replace("\\?", ".") + "$";
             var regex = new Regex(regexPattern, RegexOptions.IgnoreCase);
@@ -87,7 +97,7 @@ namespace BizDevAgent.Agents
             RegexOptions options = caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase;
             Regex textRegex = new Regex(wordPattern, options);
 
-            foreach (var projectFile in _projectFiles)
+            foreach (var projectFile in _repoFiles)
             {
                 if (regex.IsMatch(projectFile.FileName))
                 {
@@ -115,15 +125,15 @@ namespace BizDevAgent.Agents
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFunctionSourceCode)}(className = {className}, functionName = {functionName}):");
 
-            var projectFiles = await GetCachedProjectFiles(Paths.GetProjectPath());
-            ProjectFile targetFile = null;
+            var repoFiles = await GetCachedRepoFiles(Paths.GetProjectPath());
+            RepositoryFile targetFile = null;
 
             // Attempt to find the file containing the class
-            foreach (var projectFile in projectFiles)
+            foreach (var repoFile in repoFiles)
             {
-                if (projectFile.Contents.Contains($"class {className}"))
+                if (repoFile.Contents.Contains($"class {className}"))
                 {
-                    targetFile = projectFile;
+                    targetFile = repoFile;
                     break;
                 }
             }
@@ -144,6 +154,55 @@ namespace BizDevAgent.Agents
             }
 
             PrintEndOutputWithMessage(functionSourceCode);
+        }
+
+        private async Task PrintContentAroundLine(string content, int targetLineNo, int linesToInclude)
+        {
+            // Split the content into lines
+            var lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+
+            // Calculate the range of lines to print
+            int startLine = Math.Max(targetLineNo - linesToInclude, 1);
+            int endLine = Math.Min(targetLineNo + linesToInclude, lines.Length);
+
+            // Iterate through each line within the range and print it with the line number
+            for (int i = startLine - 1; i < endLine; i++) // Adjust for zero-based index
+            {
+                // Print the line number followed by the line content
+                Console.WriteLine($"{i + 1}: {lines[i]}");
+            }
+        }
+
+        private async Task PrintContentAll(string content, int startingLineNo)
+        {
+            // Split the content into lines
+            var lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+
+            // Iterate through each line and print it with the line number
+            for (int i = 0; i < lines.Length; i++)
+            {
+                // Calculate the current line number
+                int currentLineNo = startingLineNo + i;
+
+                // Print the line number followed by the line content
+                Console.WriteLine($"{currentLineNo}: {lines[i]}");
+            }
+        }
+
+        private async Task<RepositoryFile> FindFileInRepo(string fileName, bool logError = true)
+        {
+            var repoFiles = await GetCachedRepoFiles(_localRepoPath);
+            var repoFile = repoFiles.Find(x => Path.GetFileName(x.FileName) == Path.GetFileName(fileName));
+            if (repoFile == null)
+            {
+                if (logError)
+                {
+                    PrintEndOutputWithMessage($"ERROR: Could not find file in repository named '{fileName}'");
+                }
+                return null;
+            }
+
+            return repoFile;
         }
 
         // This method needs to be implemented to parse the file's content and extract the specific function's source code.
@@ -178,9 +237,9 @@ namespace BizDevAgent.Agents
             return sourceCode;
         }
 
-        private async Task<ProjectFile> GetCachedProjectFile(string fileName)
+        private async Task<RepositoryFile> GetCachedProjectFile(string fileName)
         {
-            var projectFiles = await GetCachedProjectFiles(Paths.GetProjectPath());
+            var projectFiles = await GetCachedRepoFiles(Paths.GetProjectPath());
             foreach (var projectFile in projectFiles)
             {
                 if (projectFile.FileName.Contains(fileName))
@@ -192,20 +251,27 @@ namespace BizDevAgent.Agents
             return null;
         }
 
-        private async Task<List<ProjectFile>> GetCachedProjectFiles(string projectPath)
+        private async Task<List<RepositoryFile>> GetCachedRepoFiles(string projectPath)
         {
-            if (_projectFiles == null)
+            if (_repoFiles == null)
             {
-                _projectFiles = new List<ProjectFile>();
+                _repoFiles = new List<RepositoryFile>();
 
-                var projectFiles = await _visualStudioAgent.LoadProjectFiles(projectPath);
-                foreach (var projectFile in projectFiles)
+                // TODO gsemple: this should really be drawn from the git agent
+
+                var listResult = await _gitAgent.ListRepositoryFiles(_localRepoPath);
+                if (listResult.IsFailed)
                 {
-                    _projectFiles.Add(projectFile);
+                    throw new InvalidOperationException("Could not list files in git repository.");
+                }
+
+                foreach (var repoFile in listResult.Value)
+                {
+                    _repoFiles.Add(repoFile);
                 }
             }
 
-            return _projectFiles;
+            return _repoFiles;
         }
 
         private void PrintEndOutputWithMessage(string message = null)
@@ -217,5 +283,41 @@ namespace BizDevAgent.Agents
             Console.WriteLine("END OUTPUT");
             Console.WriteLine();
         }
+    }
+
+    /// <summary>
+    /// An agent that is called by LLMs with a simple API that dumps information to the console, and can 
+    /// be piped back into prompts for the LLM to make decisions.  This isn't normally used directly by
+    /// application code.  It is used by LLMs when preparing an implementation plan to modify source
+    /// code.
+    /// </summary>
+    public class CodeQueryAgent : Agent
+    {
+        private readonly SourceSummaryDataStore _sourceSummaryDataStore;
+        private readonly VisualStudioAgent _visualStudioAgent;
+        private readonly GitAgent _gitAgent;
+        private readonly Dictionary<string, CodeQuerySession> _sessionsCache = new Dictionary<string, CodeQuerySession>();
+
+        public CodeQueryAgent(SourceSummaryDataStore sourceSummaryDataStore, VisualStudioAgent visualStudioAgent, GitAgent gitAgent)
+        {
+            _sourceSummaryDataStore = sourceSummaryDataStore;
+            _visualStudioAgent = visualStudioAgent;
+            _gitAgent = gitAgent;
+        }
+
+        public CodeQuerySession CreateSession(string localRepoPath)
+        {
+            // Check if a session for the given path already exists in the cache
+            if (!_sessionsCache.TryGetValue(localRepoPath, out CodeQuerySession session))
+            {
+                // If it doesn't exist, create a new session and add it to the cache
+                session = new CodeQuerySession(this, _gitAgent, _sourceSummaryDataStore, localRepoPath);
+                _sessionsCache[localRepoPath] = session;
+            }
+
+            // Return the existing or new session
+            return session;
+        }
+
     }
 }

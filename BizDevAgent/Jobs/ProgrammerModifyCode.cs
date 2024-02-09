@@ -1,9 +1,6 @@
-﻿using BizDevAgent.DataStore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using BizDevAgent.Agents;
+using BizDevAgent.DataStore;
+using BizDevAgent.Utilities;
 
 namespace BizDevAgent.Jobs
 {
@@ -13,8 +10,20 @@ namespace BizDevAgent.Jobs
     [TypeId("ProgrammerModifyCode")]
     public class ProgrammerModifyCode : Job
     {
-        public ProgrammerModifyCode(string diffFileContents) 
+        private readonly GitAgent _gitAgent;
+        private readonly string _diffFileContents;
+
+        public ProgrammerModifyCode(GitAgent gitAgent, string diffFileContents) 
         { 
+            _gitAgent = gitAgent;
+            _diffFileContents = diffFileContents;
+        }
+
+        public async override Task Run()
+        {
+            var diffFilePath = Path.Combine(Paths.GetSourceControlRootPath(), "file.diff");
+            File.WriteAllText(diffFilePath, _diffFileContents);
+            //await _gitAgent.ApplyDiff(diffFilePath);
         }
     }
 }

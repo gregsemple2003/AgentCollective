@@ -33,5 +33,13 @@
         {
             return Path.Combine(Paths.GetProjectPath(), "..");
         }
+
+        public static void EnsureDirectoryExists(string path)
+        {
+            if (!System.IO.Directory.Exists(path))
+            {
+                System.IO.Directory.CreateDirectory(path);
+            }
+        }
     }
 }

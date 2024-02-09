@@ -1,0 +1,35 @@
+Given the following test plan for a specific method:
+
+[
+  {
+    "method": "ApplyCustomPatch",
+    "testCases": [
+      {
+        "description": "Apply a patch with added and modified lines to a file",
+        "input": {
+          "patch": "patch indicating lines to be added and modified",
+          "fileContents": "original file content"
+        },
+        "expectedBehavior": "file contents with the patch applied correctly"
+      },
+      {
+        "description": "Apply an empty patch to a file",
+        "input": {
+          "patch": "",
+          "fileContents": "original file content"
+        },
+        "expectedBehavior": "original file contents unchanged"
+      },
+      {
+        "description": "Apply a patch with invalid line numbers",
+        "input": {
+          "patch": "patch with line numbers exceeding file length",
+          "fileContents": "original file content"
+        },
+        "expectedBehavior": "proper handling of invalid lines, potentially throwing an exception or ignoring invalid lines"
+      }
+    ]
+  }
+]
+
+Do you see any additional cases we should be testing for that we missed?  If so, add them as JSON.
