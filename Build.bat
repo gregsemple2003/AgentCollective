@@ -1,4 +1,6 @@
 @echo off
 SET scriptPath=%~dp0Build.ps1
 powershell.exe -ExecutionPolicy Bypass -File "%scriptPath%"
-pause
+SET PS_EXIT_CODE=%errorlevel%
+exit /b %PS_EXIT_CODE%
+
