@@ -19,6 +19,7 @@ namespace BizDevAgent.Jobs
             var codeQuerySession = _codeQueryAgent.CreateSession(_localRepoPath);
 
             // your queries go here
+            await codeQuerySession.PrintFileSkeleton("SomeFile.cs");
         }
     }
 }

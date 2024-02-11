@@ -116,6 +116,8 @@ namespace BizDevAgent.Agents
                 }
             }
 
+            await Task.CompletedTask;
+
             var buildResult = new BuildResult { Output = outputBuilder.ToString() };
             return Result.Ok(buildResult);
         }

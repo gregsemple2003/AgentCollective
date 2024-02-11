@@ -100,10 +100,6 @@ class Program
         //result = await languageModelAgent.ChatCompletion("Tell me about the weather?  How does it make you feel?", result.Conversation, allowCaching: false);
         //result = await languageModelAgent.ChatCompletion("How is your Aunt Linda?  Is she getting on in years?", result.Conversation, allowCaching: false);
 
-        await OpenAiChatSession.Main(configuration);
-
-
-
         await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitAgent, codeQueryAgent, codeAnalysisAgent, assetDataStore, languageModelAgent)
         {
             GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",

@@ -29,7 +29,7 @@ namespace BizDevAgent.Agents
         }
 
         // Prints the names of all files and a short description about each
-        public async Task PrintModuleSummary(string localRepoPath)
+        public async Task PrintModuleSummary()
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintModuleSummary)}:");
 
@@ -38,7 +38,7 @@ namespace BizDevAgent.Agents
             PrintEndOutputWithMessage($"{sourceSummary.DetailedSummary}");
         }
         // Prints the C# code skeleton of the specified file, stripped of method bodies but including comments
-        public async Task PrintFileSkeleton(string localRepoPath, string fileName)
+        public async Task PrintFileSkeleton(string fileName)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileSkeleton)}(fileName = {fileName}):");
 
@@ -156,7 +156,7 @@ namespace BizDevAgent.Agents
             PrintEndOutputWithMessage(functionSourceCode);
         }
 
-        private async Task PrintContentAroundLine(string content, int targetLineNo, int linesToInclude)
+        private Task PrintContentAroundLine(string content, int targetLineNo, int linesToInclude)
         {
             // Split the content into lines
             var lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
@@ -171,9 +171,11 @@ namespace BizDevAgent.Agents
                 // Print the line number followed by the line content
                 Console.WriteLine($"{i + 1}: {lines[i]}");
             }
+
+            return Task.CompletedTask;
         }
 
-        private async Task PrintContentAll(string content, int startingLineNo)
+        private Task PrintContentAll(string content, int startingLineNo)
         {
             // Split the content into lines
             var lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
@@ -187,6 +189,8 @@ namespace BizDevAgent.Agents
                 // Print the line number followed by the line content
                 Console.WriteLine($"{currentLineNo}: {lines[i]}");
             }
+
+            return Task.CompletedTask;
         }
 
         // TODO gsemple: hide this from the research api

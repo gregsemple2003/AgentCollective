@@ -77,6 +77,8 @@ namespace BizDevAgent.DataStore
                 }
             }
 
+            await Task.CompletedTask;
+
             return null; // File not found
         }
 

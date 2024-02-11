@@ -79,7 +79,7 @@ namespace BizDevAgent.Agents
             return result;
         }
 
-        private async Task<Result<string>> ExecuteGitCommand(string command, string workingDirectory = null)
+        private Task<Result<string>> ExecuteGitCommand(string command, string workingDirectory = null)
         {
             string tempBatchFilePath = Path.GetTempFileName() + ".bat";
             string batchCommands = command;
@@ -119,14 +119,14 @@ namespace BizDevAgent.Agents
                 // Check the exit code to determine success or failure
                 if (process.ExitCode != 0)
                 {
-                    return Result.Fail<string>(outputBuilder.ToString());
+                    return Task.FromResult(Result.Fail<string>(outputBuilder.ToString()));
                 }
             }
 
             File.Delete(tempBatchFilePath);
 
             // On success, return the captured output
-            return Result.Ok(outputBuilder.ToString());
+            return Task.FromResult(Result.Ok(outputBuilder.ToString()));
         }
     }
 }

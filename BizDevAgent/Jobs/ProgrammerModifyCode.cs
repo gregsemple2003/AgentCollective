@@ -19,11 +19,11 @@ namespace BizDevAgent.Jobs
             _diffFileContents = diffFileContents;
         }
 
-        public async override Task Run()
+        public override Task Run()
         {
             var diffFilePath = Path.Combine(Paths.GetSourceControlRootPath(), "file.diff");
             File.WriteAllText(diffFilePath, _diffFileContents);
-            //await _gitAgent.ApplyDiff(diffFilePath);
+            return Task.CompletedTask;
         }
     }
 }
