@@ -80,7 +80,7 @@ class Program
         var visualStudioAgent = serviceProvider.GetRequiredService<VisualStudioAgent>();
         var codeAnalysisAgent = serviceProvider.GetRequiredService<CodeAnalysisAgent>();
         var codeQueryAgent = serviceProvider.GetRequiredService<CodeQueryAgent>();
-        var languageAgent = serviceProvider.GetRequiredService<LanguageModelAgent>();
+        var languageModelAgent = serviceProvider.GetRequiredService<LanguageModelAgent>();
         var gitAgent = serviceProvider.GetRequiredService<GitAgent>();
         var assetDataStore = serviceProvider.GetRequiredService<AssetDataStore>();
 
@@ -96,8 +96,15 @@ class Program
 
         // Run jobs until we're told to exit
 
+        //var result = await languageModelAgent.ChatCompletion("How are you doing today?  I was hoping that you are fine.  But if you are not, please tell me.", allowCaching: false);
+        //result = await languageModelAgent.ChatCompletion("Tell me about the weather?  How does it make you feel?", result.Conversation, allowCaching: false);
+        //result = await languageModelAgent.ChatCompletion("How is your Aunt Linda?  Is she getting on in years?", result.Conversation, allowCaching: false);
 
-        await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitAgent, codeQueryAgent, codeAnalysisAgent, assetDataStore)
+        await OpenAiChatSession.Main(configuration);
+
+
+
+        await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitAgent, codeQueryAgent, codeAnalysisAgent, assetDataStore, languageModelAgent)
         {
             GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
             LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",

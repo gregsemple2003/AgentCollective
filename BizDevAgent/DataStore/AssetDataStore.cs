@@ -25,6 +25,15 @@ namespace BizDevAgent.DataStore
             RegisterFactory(".prompt", new PromptAssetFactory());
         }
 
+        /// <summary>
+        /// Asset is being loaded as a hard reference, which means a synchronous and immediate load.
+        /// </summary>
+        public TAsset GetHardRef<TAsset>(string assetName)
+            where TAsset : Asset
+        {
+            return (TAsset)Get(assetName).GetAwaiter().GetResult();
+        }
+
         protected override void PostLoad(Asset asset)
         {
             asset.PostLoad(this);

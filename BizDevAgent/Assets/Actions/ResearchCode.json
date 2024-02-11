@@ -1,5 +1,0 @@
-{
-  "TypeId": "AgentAction",
-  "Title": "Research Implementation",
-  "PromptTemplatePath": "Action_ResearchImplementation"
-}

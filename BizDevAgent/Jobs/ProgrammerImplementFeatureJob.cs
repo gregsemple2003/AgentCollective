@@ -3,6 +3,7 @@ using BizDevAgent.DataStore;
 using BizDevAgent.Goals;
 using BizDevAgent.Utilities;
 using FluentResults;
+using System.Text.RegularExpressions;
 
 namespace BizDevAgent.Jobs
 {
@@ -21,29 +22,19 @@ namespace BizDevAgent.Jobs
         private readonly CodeQueryAgent _codeQueryAgent;
         private readonly CodeAnalysisAgent _codeAnalysisAgent;
         private readonly AssetDataStore _assetDataStore;
+        private readonly LanguageModelAgent _languageModelAgent;
 
-        public ProgrammerImplementFeatureJob(GitAgent gitAgent, CodeQueryAgent codeQueryAgent, CodeAnalysisAgent codeAnalysisAgent, AssetDataStore assetDataStore)
+        public ProgrammerImplementFeatureJob(GitAgent gitAgent, CodeQueryAgent codeQueryAgent, CodeAnalysisAgent codeAnalysisAgent, AssetDataStore assetDataStore, LanguageModelAgent languageModelAgent)
         {
             _gitAgent = gitAgent;
             _codeQueryAgent = codeQueryAgent;
             _codeAnalysisAgent = codeAnalysisAgent;
             _assetDataStore = assetDataStore;
+            _languageModelAgent = languageModelAgent;
         }
 
         public async override Task Run()
         {
-            // Define workflow
-            var goalTree = CreateImplementFeatureTree();
-
-            // Instantiate agent
-            var agentState = new AgentState();
-            agentState.Variables.Add(new AgentVariable { Name = "ImplementationPlan", Value = "{}" });
-            agentState.Goals.Push(goalTree);
-            agentState.Goals.Push(goalTree.SubGoals[0]);
-
-            // Generate prompt for current state
-            var prompt = await GeneratePrompt(agentState);
-
             // Clone the repository
             if (!Directory.Exists(LocalRepoPath))
             {
@@ -54,6 +45,52 @@ namespace BizDevAgent.Jobs
                 }
             }
 
+            // Define workflow
+            var goalTree = CreateGoalTree();
+
+            // Initialize agent
+            var agentState = new AgentState();
+            agentState.Variables.Add(new AgentVariable { Name = "ImplementationPlan", Value = "{}" });
+            agentState.Variables.Add(new AgentVariable { Name = "Conclusions", Value = "{}" });
+            agentState.Goals.Push(goalTree);
+            agentState.Goals.Push(goalTree.SubGoals[0]);
+
+            // Get language model to respond to goal prompt
+            var generatePromptResult = await GeneratePrompt(agentState);
+            var chatResult = await _languageModelAgent.ChatCompletion(generatePromptResult.Prompt);
+            if (chatResult.ChatResult.Choices.Count == 0) 
+            {
+                throw new InvalidOperationException("The chat API call failed to return a choice.");
+            }
+
+            // Figure out which action it is taking.
+            var responseTokens = ExtractResponseTokens(chatResult .ChatResult.Choices[0].Message.TextContent);
+            if (responseTokens == null || responseTokens.Count != 1)
+            {
+                throw new InvalidOperationException($"Invalid response tokens: {string.Join(",",responseTokens)}");
+            }
+
+            // Process action to change agent state
+            AgentActionAsset chosenAction = null;
+            foreach (var possibleAction in generatePromptResult.PromptContext.Actions)
+            {
+                if (responseTokens[0] == possibleAction.PromptTemplatePath)
+                {
+                    chosenAction = possibleAction;
+                }
+            }
+            if (chosenAction == null)
+            {
+                throw new InvalidOperationException($"Agent chose an option that was not currently available {responseTokens[0]}");
+            }
+            foreach(var chosenGoal in chosenAction.Goals) 
+            {
+                agentState.Goals.Push(chosenGoal);
+            }
+
+            // Now loop everything over again
+
+
             //// Build and report errors
             //var codeQuerySession = _codeQueryAgent.CreateSession(LocalRepoPath);
             //var buildResult = await BuildRepository(codeQuerySession);
@@ -61,6 +98,25 @@ namespace BizDevAgent.Jobs
             //{
             //    throw new NotImplementedException("The build failed, we don't deal with that yet.");
             //}
+        }
+
+        private List<string> ExtractResponseTokens(string input)
+        {
+            var tokens = new List<string>();
+
+            // Regular expression to match tokens starting with @ and followed by alphanumeric characters
+            var regex = new Regex(@"@(\w+)");
+
+            // Find matches in the input text
+            var matches = regex.Matches(input);
+
+            foreach (Match match in matches)
+            {
+                // Add the matched token to the list, excluding the @ symbol
+                tokens.Add(match.Groups[1].Value);
+            }
+
+            return tokens;
         }
 
         private async Task<string> GenerateCodeQueryApi()
@@ -71,28 +127,42 @@ namespace BizDevAgent.Jobs
             return codeQueryApi;
         }
 
-        private async Task<string> GeneratePrompt(AgentState agentState)
+        public class GeneratePromptResult
         {
+            public string Prompt { get; set; }
+            public PromptContext PromptContext { get; set; }
+        }
+        private async Task<GeneratePromptResult> GeneratePrompt(AgentState agentState)
+        {
+            var promptContext = new PromptContext();
+
             var codeQuerySessionApi = await GenerateCodeQueryApi();
             var currentGoal = agentState.Goals.Peek();
-            var promptContext = new PromptContext();
             promptContext.AdditionalData["CodeQuerySessionApi"] = codeQuerySessionApi;
             promptContext.Variables = agentState.Variables;
+
             foreach (var baselineAction in currentGoal.BaselineActions)
             {
                 baselineAction.Bind(promptContext);
                 promptContext.Actions.Add(baselineAction);
             }
+
             for (var actionIndex = 0; actionIndex < promptContext.Actions.Count; actionIndex++)
             {
                 var action = promptContext.Actions[actionIndex];
                 action.Index = (actionIndex + 1);
             }
+
             var prompt = currentGoal.PromptBuilder.Evaluate(promptContext);
-            return prompt;
+
+            return new GeneratePromptResult
+            {
+                Prompt = prompt,
+                PromptContext = promptContext
+            };
         }
 
-        private AgentGoalAsset CreateImplementFeatureTree()
+        private AgentGoalAsset CreateGoalTree()
         {
             // Create a test goal hierarchy
             return new AgentGoalAsset("Implement Feature")
@@ -105,7 +175,7 @@ namespace BizDevAgent.Jobs
                         BaselineActions = new List<AgentActionAsset>
                         {
                             AssetRef<AgentActionAsset>("RefineImplementationPlan"),
-                            AssetRef<AgentActionAsset>("ResearchCode"),
+                            AssetRef<AgentActionAsset>("ResearchImplementation"),
                             AssetRef<AgentActionAsset>("RequestHelp")
                         }
                     },

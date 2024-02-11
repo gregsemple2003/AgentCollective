@@ -6,6 +6,7 @@ namespace BizDevAgent.DataStore
 {
     /// <summary>
     /// Converter which embeds the object type in the JSON.  Use the [TypeId] class attribute to define the type name.
+    /// Also allows string references to be looked-up in an IDataStore, if one is provided.
     /// </summary>
     public class TypedJsonConverter : JsonConverter
     {
@@ -14,6 +15,7 @@ namespace BizDevAgent.DataStore
         private static readonly Dictionary<Type, string> _typeToTypeId;
 
         private readonly IServiceProvider _serviceProvider;
+        private readonly IDataStore _dataStore;
 
         static TypedJsonConverter()
         {
@@ -21,9 +23,10 @@ namespace BizDevAgent.DataStore
             _typeToTypeId = new Dictionary<Type, string>();
         }
 
-        public TypedJsonConverter(IServiceProvider serviceProvider)
+        public TypedJsonConverter(IServiceProvider serviceProvider, IDataStore dataStore = null)
         {
             _serviceProvider = serviceProvider;
+            _dataStore = dataStore;
         }
 
         public static string GetTypeId(Type type)
@@ -107,6 +110,19 @@ namespace BizDevAgent.DataStore
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
+            // References to other objects within the same data store can be resolved by string key.
+            if (reader.TokenType == JsonToken.String)
+            {
+                var key = reader.Value.ToString();
+                var obj = _dataStore.Get<object>(key).GetAwaiter().GetResult();
+                if (!string.IsNullOrEmpty(key) && obj == null)
+                {
+                    throw new InvalidOperationException($"Failure to resolve object with key '{key}' in data store {_dataStore.GetType()}");
+                }
+
+                return obj;
+            }
+
             JObject jo = JObject.Load(reader);
             var typeId = jo["TypeId"]?.Value<string>();
 

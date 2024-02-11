@@ -1,28 +1,6 @@
 
 You can further research the code by using the research API to see how particular functions are implemented, or structural questions about the codebase.
 
-{{AdditionalData.CodeQuerySessionApi}}
+This allows you to see any repository file, including code, data, or configuration files.
 
-To write more queries, you can use the following structure:
-
-using BizDevAgent.Agents;
-using System.Threading.Tasks;
-
-namespace BizDevAgent.Jobs
-{
-	// A comment that describes why we are performing the research request
-    public class CodeResearchJob_YourGuidHere : Job
-    {
-        private readonly CodeQueryAgent _codeQueryAgent;
-
-        public CodeResearchJob_YourGuidHere(CodeQueryAgent codeQueryAgent)
-        {
-            _codeQueryAgent = codeQueryAgent;
-        }
-
-        public async override Task Run()
-        {
-            // Your calls to _codeQueryAgent go here
-        }
-    }
-}
+I will provide further instructions if you choose this step.

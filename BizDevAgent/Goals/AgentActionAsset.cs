@@ -5,11 +5,14 @@ namespace BizDevAgent.Goals
     [TypeId("AgentAction")]
     public class AgentActionAsset : JsonAsset
     {
+        public string TokenPrefix => "@";
+
         public int Index { get; set; }
         public string Title { get; set; }
         public string PromptTemplatePath { get; set; }
         public PromptAsset PromptBuilder { get; set; }
-        public string Description {  get; set; }
+        public string Description { get; set; }
+        public List<AgentGoalAsset> Goals { get; set; }
 
         public void Bind(PromptContext promptContext)
         {
@@ -20,7 +23,7 @@ namespace BizDevAgent.Goals
         {
             if (!string.IsNullOrEmpty(PromptTemplatePath))
             {
-                PromptBuilder = (PromptAsset)assetDataStore.Get(PromptTemplatePath).GetAwaiter().GetResult();
+                PromptBuilder = assetDataStore.GetHardRef<PromptAsset>(PromptTemplatePath);
             }
         }
     }

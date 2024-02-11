@@ -107,9 +107,14 @@ namespace BizDevAgent.DataStore
             }
 
             // Deserialize the JSON
-            var entity = JsonConvert.DeserializeObject<TEntity>(json, _settings);
-            All.Add(entity);
-            return Task.FromResult(entity);
+            if (json != null)
+            {
+                var entity = JsonConvert.DeserializeObject<TEntity>(json, _settings);
+                All.Add(entity);
+                return Task.FromResult(entity);
+            }
+
+            return Task.FromResult<TEntity>(null);
         }
 
         protected void ClearDatabase()

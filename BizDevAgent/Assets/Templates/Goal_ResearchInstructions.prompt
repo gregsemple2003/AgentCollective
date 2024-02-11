@@ -1,4 +1,10 @@
-﻿using BizDevAgent.Agents;
+You can use the following API to make observations about the repository.
+
+{{AdditionalData.CodeQuerySessionApi}}
+
+To write more queries, you can use the following structure:
+
+using BizDevAgent.Agents;
 using System.Threading.Tasks;
 
 namespace BizDevAgent.Jobs

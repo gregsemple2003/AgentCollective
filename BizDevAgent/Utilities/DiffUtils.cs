@@ -86,11 +86,6 @@ namespace BizDevAgent.Utilities
 
             foreach (var line in diffLines)
             {
-                if (line.Contains("private async Task SaveLocal()"))
-                {
-                    var x = 3;
-                }
-
                 if (line.StartsWith("@@"))
                 {
                     // Example: @@ -92,10 +92,6 @@

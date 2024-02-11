@@ -9,10 +9,12 @@ namespace BizDevAgent.DataStore
         object Create(string filePath);
     }
 
-    public class MultiFileDataStore<TEntity> where TEntity : class
+    public class MultiFileDataStore<TEntity> : IDataStore 
+        where TEntity : class
     {
+        protected readonly JsonSerializerSettings _settings;
+
         private readonly string _baseDirectory;
-        private readonly JsonSerializerSettings _settings;
         private readonly Dictionary<string, TEntity> _cache = new Dictionary<string, TEntity>();
         private readonly Dictionary<string, string> _filePathCache = new Dictionary<string, string>();
         private readonly Dictionary<string, IAssetFactory> _factories = new Dictionary<string, IAssetFactory>();
@@ -25,7 +27,7 @@ namespace BizDevAgent.DataStore
 
             _settings = settings ?? new JsonSerializerSettings
             {
-                Converters = new List<JsonConverter> { new TypedJsonConverter(serviceProvider) },
+                Converters = new List<JsonConverter> { new TypedJsonConverter(serviceProvider, this) },
                 ContractResolver = new Newtonsoft.Json.Serialization.DefaultContractResolver
                 {
                     IgnoreSerializableInterface = true,
@@ -76,6 +78,17 @@ namespace BizDevAgent.DataStore
             }
 
             return null; // File not found
+        }
+
+        public async Task<TChild> Get<TChild>(string key) where TChild : class
+        {
+            var result = await Get(key);
+            var child = result as TChild;
+            if (child == null && result != null)
+            {
+                throw new InvalidCastException($"Cannot convert type '{typeof(TEntity).Name}' to '{typeof(TChild).Name}'.");
+            }
+            return child;
         }
 
         private void BuildFilePathCache()
