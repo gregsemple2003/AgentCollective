@@ -6,7 +6,7 @@ using Newtonsoft.Json;
 using OpenAI_API;
 using OpenAI_API.Chat;
 
-namespace BizDevAgent.Agents
+namespace BizDevAgent.Services
 {
     public class PromptResponseCacheEntry
     {
@@ -33,14 +33,14 @@ namespace BizDevAgent.Agents
         public Conversation Conversation { get; set; }
     }
 
-    public class LanguageModelAgent : Agent
+    public class LanguageModelService : Service
     {
         private readonly OpenAIAPI _api;
         private readonly PromptResponseCacheDataStore _promptResponseCache;
 
         private static string DataPath => Path.Combine(Paths.GetDataPath(), "PromptCacheDB");
 
-        public LanguageModelAgent(IConfiguration configuration)
+        public LanguageModelService(IConfiguration configuration)
         {
             var apiKey = configuration.GetValue<string>("OpenAiApiKey");
             _api = new OpenAIAPI(apiKey);

@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis;
 using System.Reflection;
 using BizDevAgent.Jobs;
 
-namespace BizDevAgent.Agents
+namespace BizDevAgent.Services
 {
     public class DynamicCompiler
     {
@@ -50,7 +50,7 @@ namespace BizDevAgent.Agents
         }
     }
 
-    public class VisualStudioAgent : Agent
+    public class VisualStudioService : Service
     {
         public Task<List<RepositoryFile>> LoadProjectFiles(string csprojPath)
         {

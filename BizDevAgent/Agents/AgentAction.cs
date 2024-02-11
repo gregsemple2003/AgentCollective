@@ -1,9 +1,9 @@
 ﻿using BizDevAgent.DataStore;
 
-namespace BizDevAgent.Goals
+namespace BizDevAgent.Agents
 {
     [TypeId("AgentAction")]
-    public class AgentActionAsset : JsonAsset
+    public class AgentAction : JsonAsset
     {
         public string TokenPrefix => "@";
 
@@ -12,7 +12,7 @@ namespace BizDevAgent.Goals
         public string PromptTemplatePath { get; set; }
         public PromptAsset PromptBuilder { get; set; }
         public string Description { get; set; }
-        public List<AgentGoalAsset> Goals { get; set; }
+        public List<AgentGoal> Goals { get; set; }
 
         public void Bind(PromptContext promptContext)
         {

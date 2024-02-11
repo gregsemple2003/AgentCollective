@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 using static System.Net.Mime.MediaTypeNames;
 using System.Drawing.Printing;
 
-namespace BizDevAgent.Agents
+namespace BizDevAgent.Services
 {
     /// <summary>
     /// Handles a code query session for a specific local repository.
@@ -14,16 +14,16 @@ namespace BizDevAgent.Agents
     public class CodeQuerySession
     {
         private readonly SourceSummaryDataStore _sourceSummaryDataStore;
-        private readonly CodeQueryAgent _codeQueryAgent;
-        private readonly GitAgent _gitAgent;
+        private readonly CodeQueryService _codeQueryService;
+        private readonly GitService _gitService;
         private readonly string _localRepoPath;
         private List<RepositoryFile> _repoFiles;
         private Dictionary<string, string[]> _fileLinesCache = new Dictionary<string, string[]>();
 
-        public CodeQuerySession(CodeQueryAgent codeQueryAgent, GitAgent gitAgent, SourceSummaryDataStore sourceSummaryDataStore, string localRepoPath)
+        public CodeQuerySession(CodeQueryService codeQueryService, GitService gitService, SourceSummaryDataStore sourceSummaryDataStore, string localRepoPath)
         {
-            _codeQueryAgent = codeQueryAgent;
-            _gitAgent = gitAgent;
+            _codeQueryService = codeQueryService;
+            _gitService = gitService;
             _sourceSummaryDataStore = sourceSummaryDataStore;
             _localRepoPath = localRepoPath;
         }
@@ -264,7 +264,7 @@ namespace BizDevAgent.Agents
 
                 // TODO gsemple: this should really be drawn from the git agent
 
-                var listResult = await _gitAgent.ListRepositoryFiles(_localRepoPath);
+                var listResult = await _gitService.ListRepositoryFiles(_localRepoPath);
                 if (listResult.IsFailed)
                 {
                     throw new InvalidOperationException("Could not list files in git repository.");
@@ -296,18 +296,18 @@ namespace BizDevAgent.Agents
     /// application code.  It is used by LLMs when preparing an implementation plan to modify source
     /// code.
     /// </summary>
-    public class CodeQueryAgent : Agent
+    public class CodeQueryService : Service
     {
         private readonly SourceSummaryDataStore _sourceSummaryDataStore;
-        private readonly VisualStudioAgent _visualStudioAgent;
-        private readonly GitAgent _gitAgent;
+        private readonly VisualStudioService _visualStudioService;
+        private readonly GitService _gitService;
         private readonly Dictionary<string, CodeQuerySession> _sessionsCache = new Dictionary<string, CodeQuerySession>();
 
-        public CodeQueryAgent(SourceSummaryDataStore sourceSummaryDataStore, VisualStudioAgent visualStudioAgent, GitAgent gitAgent)
+        public CodeQueryService(SourceSummaryDataStore sourceSummaryDataStore, VisualStudioService visualStudioService, GitService gitService)
         {
             _sourceSummaryDataStore = sourceSummaryDataStore;
-            _visualStudioAgent = visualStudioAgent;
-            _gitAgent = gitAgent;
+            _visualStudioService = visualStudioService;
+            _gitService = gitService;
         }
 
         public CodeQuerySession CreateSession(string localRepoPath)
@@ -316,7 +316,7 @@ namespace BizDevAgent.Agents
             if (!_sessionsCache.TryGetValue(localRepoPath, out CodeQuerySession session))
             {
                 // If it doesn't exist, create a new session and add it to the cache
-                session = new CodeQuerySession(this, _gitAgent, _sourceSummaryDataStore, localRepoPath);
+                session = new CodeQuerySession(this, _gitService, _sourceSummaryDataStore, localRepoPath);
                 _sessionsCache[localRepoPath] = session;
             }
 

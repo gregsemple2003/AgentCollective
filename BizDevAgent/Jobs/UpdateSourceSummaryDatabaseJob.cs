@@ -1,4 +1,4 @@
-﻿using BizDevAgent.Agents;
+﻿using BizDevAgent.Services;
 using BizDevAgent.DataStore;
 using BizDevAgent.Model;
 using BizDevAgent.Utilities;
@@ -11,18 +11,18 @@ namespace BizDevAgent.Jobs
     public class UpdateSourceSummaryDatabaseJob : Job
     {
         private readonly SourceSummaryDataStore _sourceSummaryDataStore;
-        private readonly CodeAnalysisAgent _codeAnalysisAgent;
-        private readonly VisualStudioAgent _visualStudioAgent;
-        private readonly LanguageModelAgent _languageAgent;
+        private readonly CodeAnalysisService _codeAnalysisService;
+        private readonly VisualStudioService _visualStudioService;
+        private readonly LanguageModelService _languageAgent;
 
         private const int RequiredSummaryVerison = 1;
 
-        public UpdateSourceSummaryDatabaseJob(SourceSummaryDataStore sourceSummaryDataStore, CodeAnalysisAgent codeAnalysisAgent, VisualStudioAgent visualStudioAgent, LanguageModelAgent languageModelAgent) 
+        public UpdateSourceSummaryDatabaseJob(SourceSummaryDataStore sourceSummaryDataStore, CodeAnalysisService codeAnalysisService, VisualStudioService visualStudioService, LanguageModelService languageModelService) 
         {
             _sourceSummaryDataStore = sourceSummaryDataStore;
-            _codeAnalysisAgent = codeAnalysisAgent;
-            _visualStudioAgent = visualStudioAgent;
-            _languageAgent = languageModelAgent;
+            _codeAnalysisService = codeAnalysisService;
+            _visualStudioService = visualStudioService;
+            _languageAgent = languageModelService;
         }
 
         // The next line is line 29 for the purposes of creating a .diff file.
@@ -47,7 +47,7 @@ namespace BizDevAgent.Jobs
             };
 
             var path = Environment.CurrentDirectory;
-            var projectFiles = await _visualStudioAgent.LoadProjectFiles(projectPath);
+            var projectFiles = await _visualStudioService.LoadProjectFiles(projectPath);
             foreach (var projectFile in projectFiles)
             {
                 if (projectFile.FileName.EndsWith(".cs"))
@@ -99,7 +99,7 @@ namespace BizDevAgent.Jobs
                 return replacementBody;
             };
             var originalSourceLength = projectFile.Contents.Length;
-            var transformedSource = await _codeAnalysisAgent.TransformMethodBodies(fileName, projectFile.Contents, transformMethodBody);
+            var transformedSource = await _codeAnalysisService.TransformMethodBodies(fileName, projectFile.Contents, transformMethodBody);
             var transformedSourceLength = transformedSource.Length;
             var reduction = originalSourceLength - transformedSourceLength;
             var percentageReduction = 100.0 * reduction / originalSourceLength;

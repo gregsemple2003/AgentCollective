@@ -1,4 +1,4 @@
-﻿namespace BizDevAgent.Goals
+﻿namespace BizDevAgent.Agents
 {
     public class AgentState
     {
@@ -16,13 +16,13 @@
         /// <summary>
         /// The current working stack of goals.
         /// </summary>
-        public Stack<AgentGoalAsset> Goals { get; set; }
+        public Stack<AgentGoal> Goals { get; set; }
 
         public AgentState() 
         { 
             Observations = new List<AgentObservation>();
             Variables = new List<AgentVariable>();
-            Goals = new Stack<AgentGoalAsset>();
+            Goals = new Stack<AgentGoal>();
         }
     }
 }

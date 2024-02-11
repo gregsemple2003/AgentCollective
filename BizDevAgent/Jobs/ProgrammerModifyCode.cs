@@ -1,4 +1,4 @@
-﻿using BizDevAgent.Agents;
+﻿using BizDevAgent.Services;
 using BizDevAgent.DataStore;
 using BizDevAgent.Utilities;
 
@@ -10,12 +10,12 @@ namespace BizDevAgent.Jobs
     [TypeId("ProgrammerModifyCode")]
     public class ProgrammerModifyCode : Job
     {
-        private readonly GitAgent _gitAgent;
+        private readonly GitService _gitService;
         private readonly string _diffFileContents;
 
-        public ProgrammerModifyCode(GitAgent gitAgent, string diffFileContents) 
+        public ProgrammerModifyCode(GitService gitService, string diffFileContents) 
         { 
-            _gitAgent = gitAgent;
+            _gitService = gitService;
             _diffFileContents = diffFileContents;
         }
 

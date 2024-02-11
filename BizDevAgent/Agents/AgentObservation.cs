@@ -1,6 +1,6 @@
 ﻿using BizDevAgent.DataStore;
 
-namespace BizDevAgent.Goals
+namespace BizDevAgent.Agents
 {
     public class AgentObservation
     {

@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using BizDevAgent.Utilities;
 
-namespace BizDevAgent.Agents
+namespace BizDevAgent.Services
 {
     public class RepositoryFile
     {
@@ -11,7 +11,7 @@ namespace BizDevAgent.Agents
         public string Contents { get; set; }
     }
 
-    public class GitAgent : Agent
+    public class GitService : Service
     {
         public async Task<Result<string>> Pull(string localRepoPath)
         {

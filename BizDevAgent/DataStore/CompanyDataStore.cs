@@ -4,7 +4,7 @@ using System.Data;
 using Newtonsoft.Json;
 using System.Reflection;
 using BizDevAgent.Model;
-using BizDevAgent.Agents;
+using BizDevAgent.Services;
 
 namespace BizDevAgent.DataStore
 {
@@ -14,17 +14,17 @@ namespace BizDevAgent.DataStore
 
         public List<Company> Companies { get; private set; }
 
-        private readonly WebBrowsingAgent _browsingAgent;
+        private readonly WebBrowsingService _browsingService;
 
-        public CompanyDataStore(string path, WebBrowsingAgent browsingAgent) : base(path)
+        public CompanyDataStore(string path, WebBrowsingService browsingService) : base(path)
         {
-            _browsingAgent = browsingAgent;
+            _browsingService = browsingService;
         }
 
         protected override async Task<List<Company>> GetRemote()
         {
             // Navigate to the Webpage
-            var result = await _browsingAgent.BrowsePage("https://www.gamedevmap.com/index.php?location=&country=United%20States&state=&city=&query=&type=Developer&start=1&count=2000");
+            var result = await _browsingService.BrowsePage("https://www.gamedevmap.com/index.php?location=&country=United%20States&state=&city=&query=&type=Developer&start=1&count=2000");
             var page = result.Value.Page;
 
             // Wait for the selector to ensure the elements are loaded

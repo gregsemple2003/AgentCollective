@@ -1,5 +1,5 @@
 ﻿using BizDevAgent.DataStore;
-using BizDevAgent.Agents;
+using BizDevAgent.Services;
 
 namespace BizDevAgent.Jobs
 {
@@ -13,14 +13,14 @@ namespace BizDevAgent.Jobs
     public class ResearchCompanyJob : Job
     {
         private readonly CompanyDataStore _companyDataStore;
-        private readonly WebSearchAgent _webSearchAgent;
+        private readonly WebSearchService _webSearchService;
 
         private const bool _force = true;
 
-        public ResearchCompanyJob(CompanyDataStore companyDataStore, WebSearchAgent webSearchAgent)
+        public ResearchCompanyJob(CompanyDataStore companyDataStore, WebSearchService webSearchService)
         {
             _companyDataStore = companyDataStore;
-            _webSearchAgent = webSearchAgent;
+            _webSearchService = webSearchService;
         }
 
         public override Task UpdateScheduledRunTime()
@@ -42,7 +42,7 @@ namespace BizDevAgent.Jobs
                 // Research company linkedin page
                 if (!company.Tags.Contains("linkedincompany") || _force)
                 {
-                    var results = await _webSearchAgent.Search($"{company.Name} linkedin");
+                    var results = await _webSearchService.Search($"{company.Name} linkedin");
                     if (results.Count > 0)
                     {
                         var url = results[0].LinkUrl;

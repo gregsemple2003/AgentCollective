@@ -1,5 +1,5 @@
 ﻿using System.Reflection;
-using BizDevAgent.Agents;
+using BizDevAgent.Services;
 using BizDevAgent.Utilities;
 using BizDevAgent.DataStore;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,13 +13,13 @@ namespace BizDevAgent.Jobs
     [TypeId("ProgrammerResearchJob")]
     public class ProgrammerResearchJob : Job
     {
-        private readonly VisualStudioAgent _visualStudioAgent;
+        private readonly VisualStudioService _visualStudioService;
         private readonly IServiceProvider _serviceProvider;
         private readonly JobRunner _jobRunner;
 
-        public ProgrammerResearchJob(VisualStudioAgent visualStudioAgent, IServiceProvider serviceProvider, JobRunner jobRunner)
+        public ProgrammerResearchJob(VisualStudioService visualStudioService, IServiceProvider serviceProvider, JobRunner jobRunner)
         {
-            _visualStudioAgent = visualStudioAgent;
+            _visualStudioService = visualStudioService;
             _serviceProvider = serviceProvider;
             _jobRunner = jobRunner;
         }
@@ -28,7 +28,7 @@ namespace BizDevAgent.Jobs
         {
             var codePath = Path.Combine(Paths.GetSourceControlRootPath(), "BizDevAgent", "Jobs", "Injected", "CodeResearchJob_ImplementXMLSerialization.txt");
             var code = File.ReadAllText(codePath);
-            var assembly = _visualStudioAgent.InjectCode(code);
+            var assembly = _visualStudioService.InjectCode(code);
 
             // Assuming you know the type name and namespace
             Type jobType = FindJobType(assembly, "CodeResearchJob");

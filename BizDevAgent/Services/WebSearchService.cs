@@ -2,7 +2,7 @@
 using PuppeteerSharp;
 using static RocksDbSharp.ColumnFamilies;
 
-namespace BizDevAgent.Agents
+namespace BizDevAgent.Services
 {
     public class SearchResult
     {
@@ -11,13 +11,13 @@ namespace BizDevAgent.Agents
         public string LinkDescription { get; set; }
     }
 
-    public class WebSearchAgent : Agent
+    public class WebSearchService : Service
     {
-        private readonly WebBrowsingAgent _browsingAgent;
+        private readonly WebBrowsingService _browsingService;
 
-        public WebSearchAgent(WebBrowsingAgent browsingAgent)
+        public WebSearchService(WebBrowsingService browsingService)
         {
-            _browsingAgent = browsingAgent;
+            _browsingService = browsingService;
         }
 
         public async Task<List<SearchResult>> Search(string keyword)
@@ -26,7 +26,7 @@ namespace BizDevAgent.Agents
             string escapedQuery = Uri.EscapeDataString(keyword);
             string searchEngineUrl = $"https://www.google.com/search?q={escapedQuery}";
 
-            var browseResult = await _browsingAgent.BrowsePage(searchEngineUrl);
+            var browseResult = await _browsingService.BrowsePage(searchEngineUrl);
 
             if (browseResult.IsFailed)
             {

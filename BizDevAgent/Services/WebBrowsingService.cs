@@ -5,7 +5,7 @@ using PuppeteerSharp;
 using System;
 using System.Diagnostics;
 
-namespace BizDevAgent.Agents
+namespace BizDevAgent.Services
 {
     public class ResponseError : Error
     {
@@ -24,19 +24,19 @@ namespace BizDevAgent.Agents
         public IResponse Response { get; set; }
     }
 
-    public class WebBrowsingAgent : Agent, IDisposable
+    public class WebBrowsingService : Service, IDisposable
     {
         private readonly Random _random;
 
         private IBrowser _browser;
         private DateTime _lastActionTime;
 
-        public WebBrowsingAgent()
+        public WebBrowsingService()
         {
             _random = new Random();
         }
 
-        static WebBrowsingAgent()
+        static WebBrowsingService()
         {
             TerminateChromeProcessesForTesting();
         }
@@ -84,7 +84,7 @@ namespace BizDevAgent.Agents
                 if (delayRequired > TimeSpan.Zero)
                 {
                     await Task.Delay(delayRequired);
-                    Console.WriteLine($"[WebBrowsingAgent] Waiting {delayRequired.TotalMilliseconds} ms");
+                    Console.WriteLine($"[WebbrowsingService] Waiting {delayRequired.TotalMilliseconds} ms");
                 }
 
                 _lastActionTime = DateTime.UtcNow;

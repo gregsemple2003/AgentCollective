@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis;
 using System.Text;
 
-namespace BizDevAgent.Agents
+namespace BizDevAgent.Services
 {
     /// <summary>
     /// Replace method bodies by applying the given transformation.  Used by the code summarization routines.
@@ -124,7 +124,7 @@ namespace BizDevAgent.Agents
         // Optionally, override other Visit* methods if needed.
     }
 
-    public class CodeAnalysisAgent : Agent
+    public class CodeAnalysisService : Service
     {
         public async Task<string> TransformMethodBodies(string processingTag, string sourceCode, Func<string, string, Task<string>> transformMethodBody)
         {

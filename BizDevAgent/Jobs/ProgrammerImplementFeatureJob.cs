@@ -1,7 +1,8 @@
-﻿using BizDevAgent.Agents;
+﻿using BizDevAgent.Services;
 using BizDevAgent.DataStore;
-using BizDevAgent.Goals;
+using BizDevAgent.Agents;
 using BizDevAgent.Utilities;
+using BizDevAgent.Utilities.Commands;
 using FluentResults;
 using System.Text.RegularExpressions;
 
@@ -16,21 +17,21 @@ namespace BizDevAgent.Jobs
         public string GitRepoUrl { get; set; }
         public string LocalRepoPath { get; set; }
         public string FeatureSpecification { get; set; }
-        public IBuildAgent BuildAgent { get; set; }
+        public IBuildCommand BuildAgent { get; set; }
 
-        private readonly GitAgent _gitAgent;
-        private readonly CodeQueryAgent _codeQueryAgent;
-        private readonly CodeAnalysisAgent _codeAnalysisAgent;
+        private readonly GitService _gitService;
+        private readonly CodeQueryService _codeQueryService;
+        private readonly CodeAnalysisService _codeAnalysisService;
         private readonly AssetDataStore _assetDataStore;
-        private readonly LanguageModelAgent _languageModelAgent;
+        private readonly LanguageModelService _languageModelService;
 
-        public ProgrammerImplementFeatureJob(GitAgent gitAgent, CodeQueryAgent codeQueryAgent, CodeAnalysisAgent codeAnalysisAgent, AssetDataStore assetDataStore, LanguageModelAgent languageModelAgent)
+        public ProgrammerImplementFeatureJob(GitService gitService, CodeQueryService codeQueryService, CodeAnalysisService codeAnalysisService, AssetDataStore assetDataStore, LanguageModelService languageModelService)
         {
-            _gitAgent = gitAgent;
-            _codeQueryAgent = codeQueryAgent;
-            _codeAnalysisAgent = codeAnalysisAgent;
+            _gitService = gitService;
+            _codeQueryService = codeQueryService;
+            _codeAnalysisService = codeAnalysisService;
             _assetDataStore = assetDataStore;
-            _languageModelAgent = languageModelAgent;
+            _languageModelService = languageModelService;
         }
 
         public async override Task Run()
@@ -38,7 +39,7 @@ namespace BizDevAgent.Jobs
             // Clone the repository
             if (!Directory.Exists(LocalRepoPath))
             {
-                var cloneResult = await _gitAgent.CloneRepository(GitRepoUrl, LocalRepoPath);
+                var cloneResult = await _gitService.CloneRepository(GitRepoUrl, LocalRepoPath);
                 if (cloneResult.IsFailed)
                 {
                     throw new InvalidOperationException("Failed to clone repository");
@@ -57,7 +58,7 @@ namespace BizDevAgent.Jobs
 
             // Get language model to respond to goal prompt
             var generatePromptResult = await GeneratePrompt(agentState);
-            var chatResult = await _languageModelAgent.ChatCompletion(generatePromptResult.Prompt);
+            var chatResult = await _languageModelService.ChatCompletion(generatePromptResult.Prompt);
             if (chatResult.ChatResult.Choices.Count == 0) 
             {
                 throw new InvalidOperationException("The chat API call failed to return a choice.");
@@ -71,7 +72,7 @@ namespace BizDevAgent.Jobs
             }
 
             // Process action to change agent state
-            AgentActionAsset chosenAction = null;
+            AgentAction chosenAction = null;
             foreach (var possibleAction in generatePromptResult.PromptContext.Actions)
             {
                 if (responseTokens[0] == possibleAction.PromptTemplatePath)
@@ -92,7 +93,7 @@ namespace BizDevAgent.Jobs
 
 
             //// Build and report errors
-            //var codeQuerySession = _codeQueryAgent.CreateSession(LocalRepoPath);
+            //var codeQuerySession = _codeQueryService.CreateSession(LocalRepoPath);
             //var buildResult = await BuildRepository(codeQuerySession);
             //if (buildResult.IsFailed)
             //{
@@ -121,9 +122,9 @@ namespace BizDevAgent.Jobs
 
         private async Task<string> GenerateCodeQueryApi()
         {
-            var codeQuerySession = _codeQueryAgent.CreateSession(Paths.GetSourceControlRootPath());
-            var projectFile = await codeQuerySession.FindFileInRepo("CodeQueryAgent.cs", logError: false);
-            var codeQueryApi = _codeAnalysisAgent.GeneratePublicApiSkeleton(projectFile.Contents);
+            var codeQuerySession = _codeQueryService.CreateSession(Paths.GetSourceControlRootPath());
+            var projectFile = await codeQuerySession.FindFileInRepo("codeQueryService.cs", logError: false);
+            var codeQueryApi = _codeAnalysisService.GeneratePublicApiSkeleton(projectFile.Contents);
             return codeQueryApi;
         }
 
@@ -162,27 +163,27 @@ namespace BizDevAgent.Jobs
             };
         }
 
-        private AgentGoalAsset CreateGoalTree()
+        private AgentGoal CreateGoalTree()
         {
             // Create a test goal hierarchy
-            return new AgentGoalAsset("Implement Feature")
+            return new AgentGoal("Implement Feature")
             {
-                SubGoals = new List<AgentGoalAsset>
+                SubGoals = new List<AgentGoal>
                 {
-                    new AgentGoalAsset("Create Implementation Plan")
+                    new AgentGoal("Create Implementation Plan")
                     {
                         PromptBuilder = AssetRef<PromptAsset>("Goal_RefineImplementationPlan"),
-                        BaselineActions = new List<AgentActionAsset>
+                        BaselineActions = new List<AgentAction>
                         {
-                            AssetRef<AgentActionAsset>("RefineImplementationPlan"),
-                            AssetRef<AgentActionAsset>("ResearchImplementation"),
-                            AssetRef<AgentActionAsset>("RequestHelp")
+                            AssetRef<AgentAction>("RefineImplementationPlan"),
+                            AssetRef<AgentAction>("ResearchImplementation"),
+                            AssetRef<AgentAction>("RequestHelp")
                         }
                     },
 
-                    new AgentGoalAsset("Modify Repository"),
+                    new AgentGoal("Modify Repository"),
 
-                    new AgentGoalAsset("Write Unit Tests"),
+                    new AgentGoal("Write Unit Tests"),
                 }
             };
         }

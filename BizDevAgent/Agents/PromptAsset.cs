@@ -1,19 +1,19 @@
 ﻿using HandlebarsDotNet;
 using BizDevAgent.DataStore;
 
-namespace BizDevAgent.Goals
+namespace BizDevAgent.Agents
 {
     public class PromptContext
     {
         public List<AgentObservation> Observations { get; set; }
-        public List<AgentActionAsset> Actions { get; set; }
+        public List<AgentAction> Actions { get; set; }
         public List<AgentVariable> Variables { get; set; }
         public Dictionary<string, object> AdditionalData { get; set; }
 
         public PromptContext() 
         { 
             Observations = new List<AgentObservation>();
-            Actions = new List<AgentActionAsset>();
+            Actions = new List<AgentAction>();
             Variables = new List<AgentVariable>();
             AdditionalData = new Dictionary<string, object>();
         }

@@ -1,4 +1,4 @@
-﻿namespace BizDevAgent.Goals
+﻿namespace BizDevAgent.Agents
 {
     /// <summary>
     /// Holds the planning state of the agent.

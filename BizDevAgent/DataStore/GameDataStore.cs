@@ -1,5 +1,5 @@
 ﻿using HtmlAgilityPack;
-using BizDevAgent.Agents;
+using BizDevAgent.Services;
 using PuppeteerSharp;
 using Newtonsoft.Json;
 using System.Text.RegularExpressions;
@@ -13,18 +13,18 @@ namespace BizDevAgent.DataStore
     public class GameDataStore : SingleFileDataStore<Game>
     {
         private readonly GameSeriesDataStore _seriesDataStore;
-        private readonly WebBrowsingAgent _browsingAgent;
+        private readonly WebBrowsingService _browsingService;
 
-        public GameDataStore(GameSeriesDataStore seriesDataStore, WebBrowsingAgent browsingAgent, string path) : base(path)
+        public GameDataStore(GameSeriesDataStore seriesDataStore, WebBrowsingService browsingService, string path) : base(path)
         {
             _seriesDataStore = seriesDataStore;
-            _browsingAgent = browsingAgent;
+            _browsingService = browsingService;
         }
 
         public async Task UpdateDetails(Game game)
         {
             var url = $"https://store.steampowered.com/app/{game.SteamAppId}";
-            var browseResult = await _browsingAgent.BrowsePage(url);
+            var browseResult = await _browsingService.BrowsePage(url);
 
             // Wait for the selector to ensure the elements are loaded
             var page = browseResult.Value.Page;
@@ -144,7 +144,7 @@ namespace BizDevAgent.DataStore
 
         protected override async Task<List<Game>> GetRemote()
         {
-            var result = await _browsingAgent.BrowsePage("https://steamdb.info/tech/Engine/Unreal/");
+            var result = await _browsingService.BrowsePage("https://steamdb.info/tech/Engine/Unreal/");
             if (result.IsFailed)
             {
                 Console.WriteLine($"ERROR: GetRemote failed to browse page");

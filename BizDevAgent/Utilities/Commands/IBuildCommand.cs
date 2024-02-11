@@ -1,6 +1,6 @@
 ﻿using FluentResults;
 
-namespace BizDevAgent.Agents
+namespace BizDevAgent.Utilities
 {
     public class BuildResult
     {
@@ -10,7 +10,7 @@ namespace BizDevAgent.Agents
     /// <summary>
     /// Builds a project producing artifacts such as executables etc.
     /// </summary>
-    public interface IBuildAgent
+    public interface IBuildCommand
     {
         public Task<Result<BuildResult>> Build(string rootRepoPath);
     }

@@ -1,25 +1,25 @@
 ﻿using BizDevAgent.DataStore;
 
-namespace BizDevAgent.Goals
+namespace BizDevAgent.Agents
 {
     [TypeId("AgentGoal")]
-    public class AgentGoalAsset : JsonAsset
+    public class AgentGoal : JsonAsset
     {
         public string Title { get; set; }
-        public List<AgentGoalAsset> SubGoals { get; set; } = new List<AgentGoalAsset>();
+        public List<AgentGoal> SubGoals { get; set; } = new List<AgentGoal>();
         public PromptAsset PromptBuilder { get; set; }
         public string PromptTemplatePath { get; set; }
 
         /// <summary>
         /// The minimal set of actions that are available to this agent when this is the immediate goal.
         /// </summary>
-        public List<AgentActionAsset> BaselineActions { get; set; }
+        public List<AgentAction> BaselineActions { get; set; }
 
-        public AgentGoalAsset()
+        public AgentGoal()
         {
         }
 
-        public AgentGoalAsset(string title)
+        public AgentGoal(string title)
         {
             Title = title;
         }

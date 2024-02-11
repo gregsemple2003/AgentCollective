@@ -1,11 +1,9 @@
-﻿using System.Collections.Generic;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using FluentResults;
 
-namespace BizDevAgent.Agents
+namespace BizDevAgent.Utilities
 {
     public class BuildError : Error
     {
@@ -48,7 +46,7 @@ namespace BizDevAgent.Agents
                         int.Parse(match.Groups["lineNumber"].Value),
                         int.Parse(match.Groups["columnNumber"].Value),
                         match.Groups["errorCode"].Value,
-                        match.Groups["errorMessage"].Value, 
+                        match.Groups["errorMessage"].Value,
                         line
                     ));
                 }
@@ -58,11 +56,11 @@ namespace BizDevAgent.Agents
         }
     }
 
-    public class BatchFileBuildAgent : IBuildAgent
+    public class BatchFileBuildCommand : IBuildCommand
     {
         public string ScriptPath { get; set; }
 
-        public BatchFileBuildAgent()
+        public BatchFileBuildCommand()
         {
         }
 

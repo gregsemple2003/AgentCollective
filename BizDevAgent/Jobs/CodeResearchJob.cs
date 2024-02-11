@@ -1,22 +1,22 @@
-﻿using BizDevAgent.Agents;
+﻿using BizDevAgent.Services;
 using System.Threading.Tasks;
 
 namespace BizDevAgent.Jobs
 {
     public class CodeResearchJob_YourGuidHere : Job
     {
-        private readonly CodeQueryAgent _codeQueryAgent;
+        private readonly CodeQueryService _codeQueryService;
         private readonly string _localRepoPath;
 
-        public CodeResearchJob_YourGuidHere(CodeQueryAgent codeQueryAgent, string localRepoPath)
+        public CodeResearchJob_YourGuidHere(CodeQueryService codeQueryService, string localRepoPath)
         {
-            _codeQueryAgent = codeQueryAgent;
+            _codeQueryService = codeQueryService;
             _localRepoPath = localRepoPath;
         }
 
         public async override Task Run()
         {
-            var codeQuerySession = _codeQueryAgent.CreateSession(_localRepoPath);
+            var codeQuerySession = _codeQueryService.CreateSession(_localRepoPath);
 
             // your queries go here
             await codeQuerySession.PrintFileSkeleton("SomeFile.cs");

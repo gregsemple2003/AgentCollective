@@ -3,7 +3,7 @@ using BizDevAgent.Utilities;
 using BizDevAgent.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
-using BizDevAgent.Agents;
+using BizDevAgent.Services;
 using FluentResults;
 using System.Runtime;
 using System;
@@ -46,8 +46,8 @@ class Program
         });
         serviceCollection.AddSingleton<CompanyDataStore>(serviceProvider =>
         {
-            var browsingAgent = serviceProvider.GetRequiredService<WebBrowsingAgent>();
-            return new CompanyDataStore(CompanyDataPath, browsingAgent);
+            var browsingService = serviceProvider.GetRequiredService<WebBrowsingService>();
+            return new CompanyDataStore(CompanyDataPath, browsingService);
         });
         serviceCollection.AddSingleton<GameSeriesDataStore>(serviceProvider =>
         {
@@ -60,13 +60,13 @@ class Program
         serviceCollection.AddSingleton<GameDataStore>(serviceProvider =>
         {
             var gameSeriesDataStore = serviceProvider.GetRequiredService<GameSeriesDataStore>();
-            var browsingAgent = serviceProvider.GetRequiredService<WebBrowsingAgent>();
-            return new GameDataStore(gameSeriesDataStore, browsingAgent, GameDataPath);
+            var browsingService = serviceProvider.GetRequiredService<WebBrowsingService>();
+            return new GameDataStore(gameSeriesDataStore, browsingService, GameDataPath);
         });
 
         // Register jobs 
         Job.RegisterAll(serviceCollection);
-        Agent.RegisterAll(serviceCollection);
+        Service.RegisterAll(serviceCollection);
 
         // Build the service provider
         var serviceProvider = serviceCollection.BuildServiceProvider();
@@ -77,11 +77,11 @@ class Program
         var websiteDataStore = serviceProvider.GetRequiredService<WebsiteDataStore>();
         var sourceSummaryDataStore = serviceProvider.GetRequiredService<SourceSummaryDataStore>();
         var jobRunner = serviceProvider.GetRequiredService<JobRunner>();
-        var visualStudioAgent = serviceProvider.GetRequiredService<VisualStudioAgent>();
-        var codeAnalysisAgent = serviceProvider.GetRequiredService<CodeAnalysisAgent>();
-        var codeQueryAgent = serviceProvider.GetRequiredService<CodeQueryAgent>();
-        var languageModelAgent = serviceProvider.GetRequiredService<LanguageModelAgent>();
-        var gitAgent = serviceProvider.GetRequiredService<GitAgent>();
+        var visualStudioService = serviceProvider.GetRequiredService<VisualStudioService>();
+        var codeAnalysisService = serviceProvider.GetRequiredService<CodeAnalysisService>();
+        var codeQueryService = serviceProvider.GetRequiredService<CodeQueryService>();
+        var languageModelService = serviceProvider.GetRequiredService<LanguageModelService>();
+        var gitService = serviceProvider.GetRequiredService<GitService>();
         var assetDataStore = serviceProvider.GetRequiredService<AssetDataStore>();
 
         // Load baseline required data
@@ -96,22 +96,22 @@ class Program
 
         // Run jobs until we're told to exit
 
-        //var result = await languageModelAgent.ChatCompletion("How are you doing today?  I was hoping that you are fine.  But if you are not, please tell me.", allowCaching: false);
-        //result = await languageModelAgent.ChatCompletion("Tell me about the weather?  How does it make you feel?", result.Conversation, allowCaching: false);
-        //result = await languageModelAgent.ChatCompletion("How is your Aunt Linda?  Is she getting on in years?", result.Conversation, allowCaching: false);
+        //var result = await languageModelService.ChatCompletion("How are you doing today?  I was hoping that you are fine.  But if you are not, please tell me.", allowCaching: false);
+        //result = await languageModelService.ChatCompletion("Tell me about the weather?  How does it make you feel?", result.Conversation, allowCaching: false);
+        //result = await languageModelService.ChatCompletion("How is your Aunt Linda?  Is she getting on in years?", result.Conversation, allowCaching: false);
 
-        await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitAgent, codeQueryAgent, codeAnalysisAgent, assetDataStore, languageModelAgent)
+        await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitService, codeQueryService, codeAnalysisService, assetDataStore, languageModelService)
         {
             GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
             LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",
             FeatureSpecification = @"Convert any data saving functionality from JSON to XML.",
-            BuildAgent = new BatchFileBuildAgent
+            BuildAgent = new BatchFileBuildCommand
             {
                 ScriptPath = "Build.bat"
             }
         });
-        //await jobRunner.RunJob(new ProgrammerResearchJob(visualStudioAgent, serviceProvider, jobRunner));
-        //await jobRunner.RunJob(new ProgrammerModifyCode(gitAgent, diffFileContents));
+        //await jobRunner.RunJob(new ProgrammerResearchJob(visualStudioService, serviceProvider, jobRunner));
+        //await jobRunner.RunJob(new ProgrammerModifyCode(gitService, diffFileContents));
         //await jobRunner.RunJob(new ResearchCompanyJob(companyDataStore, serviceProvider.GetRequiredService<WebSearchAgent>()));
         //await jobRunner.RunJob(new UpdateCompanyWebsitesJob(websiteDataStore, companyDataStore));       
         //await jobRunner.RunJob(new UpdateGameDetailsJob(gameDataStore));
