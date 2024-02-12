@@ -70,14 +70,14 @@ namespace BizDevAgent.Services
 
         public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node)
         {
-            // Keep only the CodeQuerySession class, remove all others
+            // Keep only the RepositoryQuerySession class, remove all others
             // TODO gsemple: remove hard-coding
-            if (node.Identifier.Text != "CodeQuerySession")
+            if (node.Identifier.Text != "RepositoryQuerySession")
             {
                 return null;
             }
 
-            // For the CodeQuerySession class, remove all members except public methods
+            // For the RepositoryQuerySession class, remove all members except public methods
             var newMembers = node.Members.Where(member =>
                 member is MethodDeclarationSyntax method &&
                 method.Modifiers.Any(SyntaxKind.PublicKeyword) &&
@@ -157,6 +157,36 @@ namespace BizDevAgent.Services
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Given csharp source code, rename the class from the old name to a new name.
+        /// </summary>
+        public string RenameClass(string sourceCode, string oldClassName, string newClassName)
+        {
+            // Parse the source code into a syntax tree
+            var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+            var root = syntaxTree.GetRoot();
+
+            // Find all class declarations matching the old class name
+            var classDeclarations = root.DescendantNodes()
+                                         .OfType<ClassDeclarationSyntax>()
+                                         .Where(c => c.Identifier.Text == oldClassName);
+
+            var classDeclarationsList = classDeclarations.ToList();
+            if (classDeclarationsList.Count != 1)
+            {
+                throw new InvalidOperationException($"Found {classDeclarationsList.Count} classes named '{oldClassName}' to rename");
+            }
+
+            // Create a new root with the renamed classes
+            var newRoot = root.ReplaceNodes(classDeclarations, (node, _) => node.WithIdentifier(SyntaxFactory.Identifier(newClassName)));
+
+            // Return the modified source code
+            return newRoot.ToFullString();
+        }
+
+        /// <summary>
+        /// Given some source code, strip out the method bodies and anything else that seems extraneous to its use as a public API.
+        /// </summary>
         public string GeneratePublicApiSkeleton(string sourceCode)
         {
             var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);

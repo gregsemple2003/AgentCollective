@@ -52,26 +52,10 @@ namespace BizDevAgent.Services
 
     public class VisualStudioService : Service
     {
-        public Task<List<RepositoryFile>> LoadProjectFiles(string csprojPath)
-        {
-            var results = new List<RepositoryFile>();
-
-            // In .NET 5 and beyond, all source files are implicitly contained in the project folder recursively
-            // without needing to explicitly mention each file.
-            var csFiles = Directory.GetFiles(csprojPath, "*.cs", SearchOption.AllDirectories);
-
-            foreach (var file in csFiles)
-            {
-                var normalizedPath = Path.GetFullPath(file);
-                var contents = File.ReadAllText(normalizedPath);
-                results.Add(new RepositoryFile { FileName = normalizedPath, Contents = contents});
-            }
-
-            return Task.FromResult(results);
-        }
-
         public Assembly InjectCode(string code)
         {
+            // TODO gsemple: this doesn't seem like the right place for .net framework injection code, its valid for anyone with a .net runtime
+            // perhaps have a runtime framework service??
             // Dynamically compile and load the assembly
             var compiler = new DynamicCompiler();
             Assembly assembly = compiler.CompileAndLoadAssembly(code);

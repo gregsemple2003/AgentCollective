@@ -1,33 +1,34 @@
 {
   "TypeId": "AgentGoal",
   "Title": "Implement Feature",
-  "StackDescription": "You are being tasked with the job to implement a feature in C# by modifying an existing repository.",
+  "StackDescription": { "Text": "You are being tasked with the job to implement a feature in C# by modifying an existing repository." },
   "RequiredSubgoals": [
     {
       "TypeId": "AgentGoal",
       "Title": "Refine Implementation Plan",
-      "StackDescription": "Your goal is to create or refine an implementation plan, which are step-by-step instructions on exactly which classes or methods to modify and how.\n\nYou must ensure that the classes or methods being modified actually exist by researching the code first.",
+      "StackDescription": { "Text": "Your goal is to create or refine an implementation plan, which are step-by-step instructions on exactly which classes or methods to modify and how.  You must ensure that the classes or methods being modified actually exist by researching the code first." },
+      "DoneDescription": { "Template": "RefineImplementationPlan_Done" },
       "OptionalSubgoals": [
         {
           "TypeId": "AgentGoal",
           "Title": "Research Implementation",
-          "StackDescription": "But first, you're going to write some calls to our research API",
-          "OptionBuilder": "ResearchImplementation_Option",
-          "StackBuilder": "ResearchImplementation_Stack",
+          "OptionDescription": { "Template": "ResearchImplementation_Option" },
+          "StackDescription": { "Template": "ResearchImplementation_Stack" },
+          "DoneDescription": { "Template": "ResearchImplementation_Done" },
           "OptionalSubgoals": [
             {
               "TypeId": "AgentGoal",
               "Title": "Evaluate Research",
-              "OptionBuilder": "EvaluateResearch_Option",
-              "StackBuilder": "EvaluateResearch_Stack"
+              "OptionDescription": { "Template": "EvaluateResearch_Option" },
+              "StackDescription": { "Template": "EvaluateResearch_Stack" }
             }
           ]
         },
         {
           "TypeId": "AgentGoal",
           "Title": "Request Help",
-          "OptionBuilder": "RequestHelp_Option",
-          "StackBuilder": "RequestHelp_Stack"
+          "OptionDescription": { "Template": "RequestHelp_Option" },
+          "StackDescription": { "Template": "RequestHelp_Stack" }
         }
       ]
     },

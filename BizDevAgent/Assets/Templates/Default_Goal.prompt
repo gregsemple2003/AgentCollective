@@ -1,7 +1,7 @@
 GOAL  
 
 {{#each Goals}}
-{{StackDescription}}
+{{StackDescription.Text}}
 
 {{/each}}
 
@@ -33,7 +33,7 @@ You can take ONLY ONE of the following actions.  Take the action that advances y
 
 {{#each OptionalSubgoals}}
 Action {{Index}}: {{Title}}
-{{OptionDescription}}
-If you choose this action, include '{{TokenPrefix}}{{OptionBuilder.Key}}' in your response, along with other information you wish to provide.
+{{OptionDescription.Text}}
+If you choose this action, include '{{TokenPrefix}}{{OptionDescription.Key}}' in your response, along with other information you wish to provide.
 
 {{/each}}

@@ -1,19 +1,51 @@
 ﻿using BizDevAgent.DataStore;
-using System.Runtime.Serialization;
 
 namespace BizDevAgent.Agents
 {
+    /// <summary>
+    /// Allows either a direct description, or can use the template substitution engine based on context from a file.
+    /// </summary>
+    public class OverridableText
+    { 
+        public string Text { get; set; }
+        public PromptAsset Template { get; set; }
+
+        public string Key
+        {
+            get
+            {
+                if (Template == null) throw new InvalidOperationException("Use of a key on text requires a template.");
+
+                return Template.Key;
+            }
+        }
+
+        public void Bind(PromptContext promptContext)
+        {
+            if (Template != null)
+            {
+                Text = Template.Evaluate(promptContext);
+            }
+            else if (Text == null)
+            {
+                throw new InvalidOperationException("Text description must either have a template or valid text.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Represents a task in the goal hierarchy of an agent.  Helps to define agent state and behavior in natural language:
+    ///     - The subgoals of this goal, some or all of which can be chosen to complete this goal.
+    ///     - The goal stack, which is a top-down series of descriptions about the task the agent is currently focused on.
+    ///     - The completion conditions, which must be true before this goal can be popped from the stack.
+    /// </summary>
     [TypeId("AgentGoal")]
     public class AgentGoal : JsonAsset
     {
-        public string Title { get; set; }
-
         /// <summary>
-        /// When this goal is on the agent's goal stack, a short description indicating the present activity the agent should be focused on.
-        /// The goals will be printed from top down.
+        /// A short title describing what this goal is supposed to accomplish.
         /// </summary>
-        public string StackDescription { get; set; }
-        public PromptAsset StackBuilder { get; set; }
+        public string Title { get; set; }
 
         /// <summary>
         /// Subgoals which must be compled in order for the parent to be complete.
@@ -26,10 +58,20 @@ namespace BizDevAgent.Agents
         public List<AgentGoal> OptionalSubgoals { get; set; } = new List<AgentGoal>();
 
         /// <summary>
-        /// The option which will be displayed when this goal is listed as an optional subgoal.
+        /// The text which will be displayed when this goal is listed as an optional subgoal.
         /// </summary>
-        public string OptionDescription { get; set; }
-        public PromptAsset OptionBuilder { get; set; }
+        public OverridableText OptionDescription { get; set; }
+
+        /// <summary>
+        /// When this goal is on the agent's goal stack, a short description indicating the present activity the agent should be focused on.
+        /// The goals will be printed from top down.
+        /// </summary>
+        public OverridableText StackDescription { get; set; }
+
+        /// <summary>
+        /// A short description indicating when this goal is considered finished.
+        /// </summary>
+        public OverridableText DoneDescription { get; set; }
 
         public string TokenPrefix => "@";
 

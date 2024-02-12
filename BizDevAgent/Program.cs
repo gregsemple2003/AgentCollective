@@ -79,7 +79,7 @@ class Program
         var jobRunner = serviceProvider.GetRequiredService<JobRunner>();
         var visualStudioService = serviceProvider.GetRequiredService<VisualStudioService>();
         var codeAnalysisService = serviceProvider.GetRequiredService<CodeAnalysisService>();
-        var codeQueryService = serviceProvider.GetRequiredService<CodeQueryService>();
+        var repositoryQueryService = serviceProvider.GetRequiredService<RepositoryQueryService>();
         var languageModelService = serviceProvider.GetRequiredService<LanguageModelService>();
         var gitService = serviceProvider.GetRequiredService<GitService>();
         var assetDataStore = serviceProvider.GetRequiredService<AssetDataStore>();
@@ -100,7 +100,7 @@ class Program
         //result = await languageModelService.ChatCompletion("Tell me about the weather?  How does it make you feel?", result.Conversation, allowCaching: false);
         //result = await languageModelService.ChatCompletion("How is your Aunt Linda?  Is she getting on in years?", result.Conversation, allowCaching: false);
 
-        await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitService, codeQueryService, codeAnalysisService, assetDataStore, languageModelService)
+        await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitService, repositoryQueryService, codeAnalysisService, assetDataStore, languageModelService, visualStudioService, serviceProvider)
         {
             GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
             LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",

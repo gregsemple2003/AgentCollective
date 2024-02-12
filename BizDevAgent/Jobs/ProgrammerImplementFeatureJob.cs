@@ -5,6 +5,9 @@ using BizDevAgent.Utilities;
 using BizDevAgent.Utilities.Commands;
 using FluentResults;
 using System.Text.RegularExpressions;
+using AngleSharp.Dom;
+using Microsoft.Extensions.DependencyInjection;
+using System;
 
 namespace BizDevAgent.Jobs
 {
@@ -20,21 +23,29 @@ namespace BizDevAgent.Jobs
         public IBuildCommand BuildAgent { get; set; }
 
         private readonly GitService _gitService;
-        private readonly CodeQueryService _codeQueryService;
+        private readonly RepositoryQueryService _repositoryQueryService;
         private readonly CodeAnalysisService _codeAnalysisService;
         private readonly AssetDataStore _assetDataStore;
         private readonly LanguageModelService _languageModelService;
+        private readonly IResponseParser _languageModerParser;
+        private readonly VisualStudioService _visualStudioService;
+        private readonly IServiceProvider _serviceProvider;
         private readonly AgentGoal _doneGoal;
         private readonly PromptAsset _goalPrompt;
-
-        public ProgrammerImplementFeatureJob(GitService gitService, CodeQueryService codeQueryService, CodeAnalysisService codeAnalysisService, AssetDataStore assetDataStore, LanguageModelService languageModelService)
+        private readonly RepositoryQuerySession _repositoryQuerySession;
+        
+        public ProgrammerImplementFeatureJob(GitService gitService, RepositoryQueryService repositoryQueryService, CodeAnalysisService codeAnalysisService, AssetDataStore assetDataStore, LanguageModelService languageModelService, VisualStudioService visualStudioService, IServiceProvider serviceProvider)
         {
             _gitService = gitService;
-            _codeQueryService = codeQueryService;
+            _repositoryQueryService = repositoryQueryService;
             _codeAnalysisService = codeAnalysisService;
             _assetDataStore = assetDataStore;
             _languageModelService = languageModelService;
+            _visualStudioService = visualStudioService;
+            _serviceProvider = serviceProvider;
 
+            _languageModerParser = _languageModelService.CreateResponseParser();
+            _repositoryQuerySession = _repositoryQueryService.CreateSession(Paths.GetSourceControlRootPath());
             _goalPrompt = _assetDataStore.GetHardRef<PromptAsset>("Default_Goal");
             _doneGoal = _assetDataStore.GetHardRef<AgentGoal>("DoneGoal");
         }
@@ -65,8 +76,8 @@ namespace BizDevAgent.Jobs
             await StateMachineLoop(agentState);
 
             //// Build and report errors
-            //var codeQuerySession = _codeQueryService.CreateSession(LocalRepoPath);
-            //var buildResult = await BuildRepository(codeQuerySession);
+            //var repositoryQuerySession = _repositoryQueryService.CreateSession(LocalRepoPath);
+            //var buildResult = await BuildRepository(repositoryQuerySession);
             //if (buildResult.IsFailed)
             //{
             //    throw new NotImplementedException("The build failed, we don't deal with that yet.");
@@ -86,10 +97,32 @@ namespace BizDevAgent.Jobs
                 }
 
                 // Figure out which action it is taking.
-                var responseTokens = ExtractResponseTokens(chatResult.ChatResult.Choices[0].Message.TextContent);
+                var response = chatResult.ChatResult.Choices[0].Message.TextContent;
+                var responseTokens = _languageModerParser.ExtractResponseTokens(response);
                 if (responseTokens == null || responseTokens.Count != 1)
                 {
                     throw new InvalidOperationException($"Invalid response tokens: {string.Join(",", responseTokens)}");
+                }
+
+                if (response.Contains("EvaluateResearch_Option"))
+                {
+                    var snippets = _languageModerParser.ExtractSnippets(response);
+
+                    foreach(var snippet in snippets)
+                    {
+                        if (snippet.LanguageId == "csharp")
+                        {
+                            // rename the class
+                            var newResearchClassName = $"CodeAnalysisJob_{Guid.NewGuid()}";
+                            var newContents = _codeAnalysisService.RenameClass(snippet.Contents, "CodeAnalysisJob", newResearchClassName);
+                            var assembly = _visualStudioService.InjectCode(snippet.Contents);
+                            var newResearchClass = assembly.GetType(newResearchClassName);
+                            var newResearchJob = (Job)ActivatorUtilities.CreateInstance(_serviceProvider, newResearchClass);
+
+                            //var jobResult = await _jobRunner.RunJob(job);
+                            var x = 3;
+                        }
+                    }
                 }
 
                 // Process action to change agent state
@@ -115,7 +148,7 @@ namespace BizDevAgent.Jobs
                     throw new InvalidDataException($"Default goal prompt is invalid.");
                 }
 
-                if (responseTokens[0] == possibleGoal.OptionBuilder.Key)
+                if (responseTokens[0] == possibleGoal.OptionDescription.Key)
                 {
                     chosenGoal = possibleGoal;
                 }
@@ -123,7 +156,7 @@ namespace BizDevAgent.Jobs
 
             if (chosenGoal == null)
             {
-                if (responseTokens[0] == _doneGoal.OptionBuilder.Key)
+                if (responseTokens[0] == _doneGoal.OptionDescription.Key)
                 {
                     chosenGoal = _doneGoal;
                 }
@@ -137,31 +170,11 @@ namespace BizDevAgent.Jobs
             return chosenGoal;
         }
 
-        private List<string> ExtractResponseTokens(string input)
+        private async Task<string> GenerateRepositoryQueryApi()
         {
-            var tokens = new List<string>();
-
-            // Regular expression to match tokens starting with @ and followed by alphanumeric characters
-            var regex = new Regex(@"@(\w+)");
-
-            // Find matches in the input text
-            var matches = regex.Matches(input);
-
-            foreach (Match match in matches)
-            {
-                // Add the matched token to the list, excluding the @ symbol
-                tokens.Add(match.Groups[1].Value);
-            }
-
-            return tokens;
-        }
-
-        private async Task<string> GenerateCodeQueryApi()
-        {
-            var codeQuerySession = _codeQueryService.CreateSession(Paths.GetSourceControlRootPath());
-            var projectFile = await codeQuerySession.FindFileInRepo("CodeQueryService.cs", logError: false);
-            var codeQueryApi = _codeAnalysisService.GeneratePublicApiSkeleton(projectFile.Contents);
-            return codeQueryApi;
+            var repositoryFile = await _repositoryQuerySession.FindFileInRepo("RepositoryQueryService.cs", logError: false);
+            var repositoryQueryApi = _codeAnalysisService.GeneratePublicApiSkeleton(repositoryFile.Contents);
+            return repositoryQueryApi;
         }
 
         public class GeneratePromptResult
@@ -171,29 +184,37 @@ namespace BizDevAgent.Jobs
         }
         private async Task<GeneratePromptResult> GeneratePrompt(AgentState agentState)
         {
+            // Fill-in prompt context from current agent state
             var promptContext = new PromptContext();
-
-            var codeQuerySessionApi = await GenerateCodeQueryApi();
+            var repositoryQuerySessionApi = await GenerateRepositoryQueryApi();
+            var repositoryQuerySample = _repositoryQuerySession.FindFileInRepo("RepositoryQueryJob.cs");
             var currentGoal = agentState.Goals.Peek();
-            promptContext.AdditionalData["CodeQuerySessionApi"] = codeQuerySessionApi;
+            promptContext.AdditionalData["RepositoryQuerySessionApi"] = repositoryQuerySessionApi;
             promptContext.Variables = agentState.Variables;
             promptContext.Goals = agentState.Goals.Reverse().ToList();
             promptContext.FeatureSpecification = FeatureSpecification;
 
+            // Construct a special "done" goal.
             promptContext.OptionalSubgoals.Add(_doneGoal);
+            _doneGoal.OptionDescription = currentGoal.DoneDescription;
+            if (currentGoal.DoneDescription == null) 
+            {
+                throw new InvalidDataException($"The goal '{currentGoal.Title}' must have a {nameof(currentGoal.DoneDescription)}");
+            }
+
+            // Run template substitution based on context
             foreach (var optionalSubgoal in currentGoal.OptionalSubgoals)
             {
-                if (optionalSubgoal.OptionBuilder != null)
-                {
-                    optionalSubgoal.OptionDescription = optionalSubgoal.OptionBuilder.Evaluate(promptContext);
-                }
-                if (optionalSubgoal.OptionBuilder != null)
-                {
-                    optionalSubgoal.StackDescription = optionalSubgoal.StackBuilder.Evaluate(promptContext);
-                }
                 promptContext.OptionalSubgoals.Add(optionalSubgoal);
             }
 
+            foreach(var optionalSubgoal in promptContext.OptionalSubgoals)
+            {
+                optionalSubgoal.OptionDescription.Bind(promptContext);
+                optionalSubgoal.StackDescription.Bind(promptContext);
+            }
+
+            // Generate final prompt
             var prompt = _goalPrompt.Evaluate(promptContext);
 
             return new GeneratePromptResult
@@ -215,7 +236,7 @@ namespace BizDevAgent.Jobs
             return (TAsset) asset;
         }
 
-        private async Task<Result<BuildResult>> BuildRepository(CodeQuerySession codeQuerySession)
+        private async Task<Result<BuildResult>> BuildRepository(RepositoryQuerySession repositoryQuerySession)
         {
             var buildResult = await BuildAgent.Build(LocalRepoPath);
             if (buildResult.IsFailed)
@@ -235,7 +256,7 @@ namespace BizDevAgent.Jobs
                 {
                     if (error is BuildError buildError)
                     {
-                        await codeQuerySession.PrintFileContentsAroundLine(buildError.FilePath, buildError.LineNumber, 5); // Example: 5 lines around each error
+                        await repositoryQuerySession.PrintFileContentsAroundLine(buildError.FilePath, buildError.LineNumber, 5); // Example: 5 lines around each error
                     }
                 }
                 Console.WriteLine();

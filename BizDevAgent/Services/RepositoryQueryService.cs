@@ -11,21 +11,22 @@ namespace BizDevAgent.Services
     /// <summary>
     /// Handles a code query session for a specific local repository.
     /// </summary>
-    public class CodeQuerySession
+    public class RepositoryQuerySession
     {
+        public string LocalRepoPath { get; internal set; }
+
         private readonly SourceSummaryDataStore _sourceSummaryDataStore;
-        private readonly CodeQueryService _codeQueryService;
+        private readonly RepositoryQueryService _repositoryQueryService;
         private readonly GitService _gitService;
-        private readonly string _localRepoPath;
         private List<RepositoryFile> _repoFiles;
         private Dictionary<string, string[]> _fileLinesCache = new Dictionary<string, string[]>();
 
-        public CodeQuerySession(CodeQueryService codeQueryService, GitService gitService, SourceSummaryDataStore sourceSummaryDataStore, string localRepoPath)
+        public RepositoryQuerySession(RepositoryQueryService repositoryQueryService, GitService gitService, SourceSummaryDataStore sourceSummaryDataStore, string localRepoPath)
         {
-            _codeQueryService = codeQueryService;
+            _repositoryQueryService = repositoryQueryService;
             _gitService = gitService;
             _sourceSummaryDataStore = sourceSummaryDataStore;
-            _localRepoPath = localRepoPath;
+            LocalRepoPath = localRepoPath;
         }
 
         // Prints the names of all files and a short description about each
@@ -88,7 +89,7 @@ namespace BizDevAgent.Services
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintMatchingSourceLines)}(fileMatchingPattern = {fileMatchingPattern}, text = {text}, caseSensitive = {caseSensitive}, matchWholeWord = {matchWholeWord}):");
 
-            await GetCachedRepoFiles(Paths.GetProjectPath());
+            await GetAllRepoFiles();
 
             var regexPattern = "^" + Regex.Escape(fileMatchingPattern).Replace("\\*", ".*").Replace("\\?", ".") + "$";
             var regex = new Regex(regexPattern, RegexOptions.IgnoreCase);
@@ -97,21 +98,21 @@ namespace BizDevAgent.Services
             RegexOptions options = caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase;
             Regex textRegex = new Regex(wordPattern, options);
 
-            foreach (var projectFile in _repoFiles)
+            foreach (var repositoryFile in _repoFiles)
             {
-                if (regex.IsMatch(projectFile.FileName))
+                if (regex.IsMatch(repositoryFile.FileName))
                 {
-                    if (!_fileLinesCache.TryGetValue(projectFile.FileName, out var lines))
+                    if (!_fileLinesCache.TryGetValue(repositoryFile.FileName, out var lines))
                     {
-                        lines = projectFile.Contents.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-                        _fileLinesCache[projectFile.FileName] = lines;
+                        lines = repositoryFile.Contents.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+                        _fileLinesCache[repositoryFile.FileName] = lines;
                     }
 
                     for (int i = 0; i < lines.Length; i++)
                     {
                         if (textRegex.IsMatch(lines[i])) // Adjusted for case sensitivity and whole word matching
                         {
-                            var relativePath = Path.GetRelativePath(Paths.GetSourceControlRootPath(), projectFile.FileName);
+                            var relativePath = Path.GetRelativePath(Paths.GetSourceControlRootPath(), repositoryFile.FileName);
                             Console.WriteLine($"{relativePath}({i + 1}): {lines[i]}");
                         }
                     }
@@ -125,7 +126,7 @@ namespace BizDevAgent.Services
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFunctionSourceCode)}(className = {className}, functionName = {functionName}):");
 
-            var repoFiles = await GetCachedRepoFiles(Paths.GetProjectPath());
+            var repoFiles = await GetAllRepoFiles();
             RepositoryFile targetFile = null;
 
             // Attempt to find the file containing the class
@@ -196,7 +197,12 @@ namespace BizDevAgent.Services
         // TODO gsemple: hide this from the research api
         public async Task<RepositoryFile> FindFileInRepo(string fileName, bool logError = true)
         {
-            var repoFiles = await GetCachedRepoFiles(_localRepoPath);
+            var repoFiles = await GetAllRepoFiles();
+            var strings = new List<string>();
+            foreach(var repoFile2 in repoFiles)
+            {
+                strings.Add(repoFile2.FileName);
+            }
             var repoFile = repoFiles.Find(x => Path.GetFileName(x.FileName) == Path.GetFileName(fileName));
             if (repoFile == null)
             {
@@ -244,19 +250,20 @@ namespace BizDevAgent.Services
 
         private async Task<RepositoryFile> GetCachedProjectFile(string fileName)
         {
-            var projectFiles = await GetCachedRepoFiles(Paths.GetProjectPath());
-            foreach (var projectFile in projectFiles)
+            var repositoryFiles = await GetAllRepoFiles();
+            foreach (var repositoryFile in repositoryFiles)
             {
-                if (projectFile.FileName.Contains(fileName))
+                if (repositoryFile.FileName.Contains(fileName))
                 {
-                    return projectFile;
+                    return repositoryFile;
                 }
             }
 
             return null;
         }
 
-        private async Task<List<RepositoryFile>> GetCachedRepoFiles(string projectPath)
+        // TODO gsemple: hide this from the research api
+        public async Task<List<RepositoryFile>> GetAllRepoFiles()
         {
             if (_repoFiles == null)
             {
@@ -264,7 +271,7 @@ namespace BizDevAgent.Services
 
                 // TODO gsemple: this should really be drawn from the git agent
 
-                var listResult = await _gitService.ListRepositoryFiles(_localRepoPath);
+                var listResult = await _gitService.ListRepositoryFiles(LocalRepoPath);
                 if (listResult.IsFailed)
                 {
                     throw new InvalidOperationException("Could not list files in git repository.");
@@ -296,27 +303,27 @@ namespace BizDevAgent.Services
     /// application code.  It is used by LLMs when preparing an implementation plan to modify source
     /// code.
     /// </summary>
-    public class CodeQueryService : Service
+    public class RepositoryQueryService : Service
     {
         private readonly SourceSummaryDataStore _sourceSummaryDataStore;
         private readonly VisualStudioService _visualStudioService;
         private readonly GitService _gitService;
-        private readonly Dictionary<string, CodeQuerySession> _sessionsCache = new Dictionary<string, CodeQuerySession>();
+        private readonly Dictionary<string, RepositoryQuerySession> _sessionsCache = new Dictionary<string, RepositoryQuerySession>();
 
-        public CodeQueryService(SourceSummaryDataStore sourceSummaryDataStore, VisualStudioService visualStudioService, GitService gitService)
+        public RepositoryQueryService(SourceSummaryDataStore sourceSummaryDataStore, VisualStudioService visualStudioService, GitService gitService)
         {
             _sourceSummaryDataStore = sourceSummaryDataStore;
             _visualStudioService = visualStudioService;
             _gitService = gitService;
         }
 
-        public CodeQuerySession CreateSession(string localRepoPath)
+        public RepositoryQuerySession CreateSession(string localRepoPath)
         {
             // Check if a session for the given path already exists in the cache
-            if (!_sessionsCache.TryGetValue(localRepoPath, out CodeQuerySession session))
+            if (!_sessionsCache.TryGetValue(localRepoPath, out RepositoryQuerySession session))
             {
                 // If it doesn't exist, create a new session and add it to the cache
-                session = new CodeQuerySession(this, _gitService, _sourceSummaryDataStore, localRepoPath);
+                session = new RepositoryQuerySession(this, _gitService, _sourceSummaryDataStore, localRepoPath);
                 _sessionsCache[localRepoPath] = session;
             }
 

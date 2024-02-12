@@ -2,31 +2,8 @@ In order to accomplish the above, you've decided you're going to write C# code t
 
 The research API has a single class with public methods.  When the methods are called, they will log information that tells you about the contents of the repository that you are tasked with modifying.
 
-{{AdditionalData.CodeQuerySessionApi}}
+{{AdditionalData.RepositoryQuerySessionApi}}
 
 To write C# code to call the research API, you must use the following structure:
 
-using BizDevAgent.Agents;
-using System.Threading.Tasks;
-
-namespace BizDevAgent.Jobs
-{
-    public class CodeResearchJob_YourGuidHere : Job
-    {
-        private readonly CodeQueryAgent _codeQueryAgent;
-        private readonly string _localRepoPath;
-
-        public CodeResearchJob_YourGuidHere(CodeQueryAgent codeQueryAgent, string localRepoPath)
-        {
-            _codeQueryAgent = codeQueryAgent;
-            _localRepoPath = localRepoPath;
-        }
-
-        public async override Task Run()
-        {
-            var codeQuerySession = _codeQueryAgent.CreateSession(_localRepoPath);
-
-            // your queries go here
-        }
-    }
-}
+{{AdditionalData.RepositoryQuerySessionSample}}
