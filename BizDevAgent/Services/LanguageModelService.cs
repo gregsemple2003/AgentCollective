@@ -2,15 +2,20 @@
 using BizDevAgent.Utilities;
 using FluentResults;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Identity.Client;
 using Newtonsoft.Json;
 using OpenAI_API;
 using OpenAI_API.Chat;
+using OpenAI_API.Models;
+using Rystem.OpenAi;
 
 namespace BizDevAgent.Services
 {
     public class PromptResponseCacheEntry
     {
         public string Prompt { get; set; }
+        public string ModelId { get; set; }
+        public double Temperature { get; set; }
         public string Response { get; set; }
         public DateTime TimeGenerated { get; set; }
     }
@@ -23,7 +28,11 @@ namespace BizDevAgent.Services
 
         protected override string GetKey(List<PromptResponseCacheEntry> entity)
         {
-            return entity.FirstOrDefault()?.Prompt ?? throw new InvalidOperationException("Cannot get key for empty entry list.");
+            var entry = entity.FirstOrDefault();
+            if (entry == null) throw new InvalidOperationException("Cannot get key for empty entry list.");
+
+            string cacheKey = $"{entry.ModelId}_{entry.Temperature}_{entry.Prompt}";
+            return cacheKey;
         }
     }
 
@@ -37,6 +46,7 @@ namespace BizDevAgent.Services
     {
         private readonly OpenAIAPI _api;
         private readonly PromptResponseCacheDataStore _promptResponseCache;
+        private readonly OpenAI_API.Models.Model _model;
 
         private static string DataPath => Path.Combine(Paths.GetDataPath(), "PromptCacheDB");
 
@@ -45,11 +55,15 @@ namespace BizDevAgent.Services
             var apiKey = configuration.GetValue<string>("OpenAiApiKey");
             _api = new OpenAIAPI(apiKey);
             _promptResponseCache = new PromptResponseCacheDataStore(DataPath);
+            _model = new OpenAI_API.Models.Model("gpt-4-0125-preview") { OwnedBy = "openai" };
         }
 
         public async Task<ChatConversationResult> ChatCompletion(string prompt, Conversation conversation = null, bool allowCaching = true)
         {
-            var cachedResponses = allowCaching ? await _promptResponseCache.Get(prompt) : null;
+            var temperature = 0.0;
+            string cacheKey = $"{_model.ModelID}_{temperature}_{prompt}";
+
+            var cachedResponses = allowCaching ? await _promptResponseCache.Get(cacheKey) : null;
             if (cachedResponses != null && cachedResponses.Count >= 1)
             {
                 // Return a random cached response
@@ -73,9 +87,8 @@ namespace BizDevAgent.Services
                 {
                     // Call OpenAI API for a response
                     conversation = _api.Chat.CreateConversation();
-                    //conversation.Model = OpenAI_API.Models.Model.GPT4;
-                    conversation.Model = OpenAI_API.Models.Model.ChatGPTTurbo;
-                    conversation.RequestParameters.Temperature = 0.0;
+                    conversation.Model = _model;
+                    conversation.RequestParameters.Temperature = temperature;
                 }
                 conversation.AppendUserInput(prompt);
 
@@ -87,7 +100,7 @@ namespace BizDevAgent.Services
                 if (isResponseUnique)
                 {
                     // Cache the new response if it's unique
-                    var newEntry = new PromptResponseCacheEntry { Prompt = prompt, Response = message, TimeGenerated = DateTime.UtcNow };
+                    var newEntry = new PromptResponseCacheEntry { ModelId = _model.ModelID, Temperature = temperature, Prompt = prompt, Response = message, TimeGenerated = DateTime.UtcNow };
                     var entries = cachedResponses ?? new List<PromptResponseCacheEntry>();
                     entries.Add(newEntry);
                     _promptResponseCache.Add(entries, shouldOverwrite: true);
