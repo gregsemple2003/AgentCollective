@@ -33,6 +33,10 @@
     <PackageReference Include="Rystem.OpenAi" Version="3.3.11" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Assets\Goals\" />
+  </ItemGroup>
+
 <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Exec Command="xcopy &quot;$(ProjectDir)Assets\appsettings.json&quot; &quot;$(UserProfile)\Documents\BizDevAgent\Config\&quot; /Y" />
 </Target>

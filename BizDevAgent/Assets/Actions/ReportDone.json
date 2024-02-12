@@ -1,5 +1,0 @@
-{
-  "TypeId": "AgentAction",
-  "Title": "Report Done",
-  "PromptTemplatePath": "Action_ReportDone"
-}

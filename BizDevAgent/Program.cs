@@ -104,7 +104,7 @@ class Program
         {
             GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
             LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",
-            FeatureSpecification = @"Convert any data saving functionality from JSON to XML.",
+            FeatureSpecification = @"Convert any data load or saving functionality from JSON to XML.",
             BuildAgent = new BatchFileBuildCommand
             {
                 ScriptPath = "Build.bat"

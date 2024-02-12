@@ -75,7 +75,7 @@ namespace BizDevAgent.Services
                     conversation = _api.Chat.CreateConversation();
                     //conversation.Model = OpenAI_API.Models.Model.GPT4;
                     conversation.Model = OpenAI_API.Models.Model.ChatGPTTurbo;
-                    conversation.RequestParameters.Temperature = 0.5;
+                    conversation.RequestParameters.Temperature = 0.0;
                 }
                 conversation.AppendUserInput(prompt);
 

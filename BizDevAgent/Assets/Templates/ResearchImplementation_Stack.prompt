@@ -1,8 +1,10 @@
-You can use the following API to make observations about the repository.
+In order to accomplish the above, you've decided you're going to write C# code to call the research API.
+
+The research API has a single class with public methods.  When the methods are called, they will log information that tells you about the contents of the repository that you are tasked with modifying.
 
 {{AdditionalData.CodeQuerySessionApi}}
 
-To write more queries, you can use the following structure:
+To write C# code to call the research API, you must use the following structure:
 
 using BizDevAgent.Agents;
 using System.Threading.Tasks;

@@ -24,6 +24,8 @@ namespace BizDevAgent.Jobs
         private readonly CodeAnalysisService _codeAnalysisService;
         private readonly AssetDataStore _assetDataStore;
         private readonly LanguageModelService _languageModelService;
+        private readonly AgentGoal _doneGoal;
+        private readonly PromptAsset _goalPrompt;
 
         public ProgrammerImplementFeatureJob(GitService gitService, CodeQueryService codeQueryService, CodeAnalysisService codeAnalysisService, AssetDataStore assetDataStore, LanguageModelService languageModelService)
         {
@@ -32,10 +34,13 @@ namespace BizDevAgent.Jobs
             _codeAnalysisService = codeAnalysisService;
             _assetDataStore = assetDataStore;
             _languageModelService = languageModelService;
+
+            _goalPrompt = _assetDataStore.GetHardRef<PromptAsset>("Default_Goal");
+            _doneGoal = _assetDataStore.GetHardRef<AgentGoal>("DoneGoal");
         }
 
         public async override Task Run()
-        {
+        {            
             // Clone the repository
             if (!Directory.Exists(LocalRepoPath))
             {
@@ -54,43 +59,10 @@ namespace BizDevAgent.Jobs
             agentState.Variables.Add(new AgentVariable { Name = "ImplementationPlan", Value = "{}" });
             agentState.Variables.Add(new AgentVariable { Name = "Conclusions", Value = "{}" });
             agentState.Goals.Push(goalTree);
-            agentState.Goals.Push(goalTree.SubGoals[0]);
+            agentState.Goals.Push(goalTree.RequiredSubgoals[0]);
 
-            // Get language model to respond to goal prompt
-            var generatePromptResult = await GeneratePrompt(agentState);
-            var chatResult = await _languageModelService.ChatCompletion(generatePromptResult.Prompt);
-            if (chatResult.ChatResult.Choices.Count == 0) 
-            {
-                throw new InvalidOperationException("The chat API call failed to return a choice.");
-            }
-
-            // Figure out which action it is taking.
-            var responseTokens = ExtractResponseTokens(chatResult .ChatResult.Choices[0].Message.TextContent);
-            if (responseTokens == null || responseTokens.Count != 1)
-            {
-                throw new InvalidOperationException($"Invalid response tokens: {string.Join(",",responseTokens)}");
-            }
-
-            // Process action to change agent state
-            AgentAction chosenAction = null;
-            foreach (var possibleAction in generatePromptResult.PromptContext.Actions)
-            {
-                if (responseTokens[0] == possibleAction.PromptTemplatePath)
-                {
-                    chosenAction = possibleAction;
-                }
-            }
-            if (chosenAction == null)
-            {
-                throw new InvalidOperationException($"Agent chose an option that was not currently available {responseTokens[0]}");
-            }
-            foreach(var chosenGoal in chosenAction.Goals) 
-            {
-                agentState.Goals.Push(chosenGoal);
-            }
-
-            // Now loop everything over again
-
+            // Run the machine on the goal hierarchy until done
+            await StateMachineLoop(agentState);
 
             //// Build and report errors
             //var codeQuerySession = _codeQueryService.CreateSession(LocalRepoPath);
@@ -99,6 +71,70 @@ namespace BizDevAgent.Jobs
             //{
             //    throw new NotImplementedException("The build failed, we don't deal with that yet.");
             //}
+        }
+
+        private async Task StateMachineLoop(AgentState agentState)
+        {
+            while(agentState.Goals.Count > 0) 
+            {
+                // Get language model to respond to goal prompt
+                var generatePromptResult = await GeneratePrompt(agentState);
+                var chatResult = await _languageModelService.ChatCompletion(generatePromptResult.Prompt);
+                if (chatResult.ChatResult.Choices.Count == 0)
+                {
+                    throw new InvalidOperationException("The chat API call failed to return a choice.");
+                }
+
+                // Figure out which action it is taking.
+                var responseTokens = ExtractResponseTokens(chatResult.ChatResult.Choices[0].Message.TextContent);
+                if (responseTokens == null || responseTokens.Count != 1)
+                {
+                    throw new InvalidOperationException($"Invalid response tokens: {string.Join(",", responseTokens)}");
+                }
+
+                // Process action to change agent state
+                var chosenGoal = FindChosenGoal(generatePromptResult, responseTokens);
+                if (chosenGoal == _doneGoal) 
+                {
+                    agentState.Goals.Pop();
+                }
+                else
+                {
+                    agentState.Goals.Push(chosenGoal);
+                }
+            }
+        }
+
+        private AgentGoal FindChosenGoal(GeneratePromptResult generatePromptResult, List<string> responseTokens)
+        {
+            AgentGoal chosenGoal = null;
+            foreach (var possibleGoal in generatePromptResult.PromptContext.OptionalSubgoals)
+            {
+                if (_goalPrompt == null)
+                {
+                    throw new InvalidDataException($"Default goal prompt is invalid.");
+                }
+
+                if (responseTokens[0] == possibleGoal.OptionBuilder.Key)
+                {
+                    chosenGoal = possibleGoal;
+                }
+            }
+
+            if (chosenGoal == null)
+            {
+                if (responseTokens[0] == _doneGoal.OptionBuilder.Key)
+                {
+                    chosenGoal = _doneGoal;
+                }
+            }
+
+            if (chosenGoal == null)
+            {
+                throw new InvalidOperationException($"Agent chose an option that was not currently available {responseTokens[0]}");
+            }
+
+            return chosenGoal;
         }
 
         private List<string> ExtractResponseTokens(string input)
@@ -123,7 +159,7 @@ namespace BizDevAgent.Jobs
         private async Task<string> GenerateCodeQueryApi()
         {
             var codeQuerySession = _codeQueryService.CreateSession(Paths.GetSourceControlRootPath());
-            var projectFile = await codeQuerySession.FindFileInRepo("codeQueryService.cs", logError: false);
+            var projectFile = await codeQuerySession.FindFileInRepo("CodeQueryService.cs", logError: false);
             var codeQueryApi = _codeAnalysisService.GeneratePublicApiSkeleton(projectFile.Contents);
             return codeQueryApi;
         }
@@ -141,20 +177,24 @@ namespace BizDevAgent.Jobs
             var currentGoal = agentState.Goals.Peek();
             promptContext.AdditionalData["CodeQuerySessionApi"] = codeQuerySessionApi;
             promptContext.Variables = agentState.Variables;
+            promptContext.Goals = agentState.Goals.Reverse().ToList();
+            promptContext.FeatureSpecification = FeatureSpecification;
 
-            foreach (var baselineAction in currentGoal.BaselineActions)
+            promptContext.OptionalSubgoals.Add(_doneGoal);
+            foreach (var optionalSubgoal in currentGoal.OptionalSubgoals)
             {
-                baselineAction.Bind(promptContext);
-                promptContext.Actions.Add(baselineAction);
+                if (optionalSubgoal.OptionBuilder != null)
+                {
+                    optionalSubgoal.OptionDescription = optionalSubgoal.OptionBuilder.Evaluate(promptContext);
+                }
+                if (optionalSubgoal.OptionBuilder != null)
+                {
+                    optionalSubgoal.StackDescription = optionalSubgoal.StackBuilder.Evaluate(promptContext);
+                }
+                promptContext.OptionalSubgoals.Add(optionalSubgoal);
             }
 
-            for (var actionIndex = 0; actionIndex < promptContext.Actions.Count; actionIndex++)
-            {
-                var action = promptContext.Actions[actionIndex];
-                action.Index = (actionIndex + 1);
-            }
-
-            var prompt = currentGoal.PromptBuilder.Evaluate(promptContext);
+            var prompt = _goalPrompt.Evaluate(promptContext);
 
             return new GeneratePromptResult
             {
@@ -165,27 +205,7 @@ namespace BizDevAgent.Jobs
 
         private AgentGoal CreateGoalTree()
         {
-            // Create a test goal hierarchy
-            return new AgentGoal("Implement Feature")
-            {
-                SubGoals = new List<AgentGoal>
-                {
-                    new AgentGoal("Create Implementation Plan")
-                    {
-                        PromptBuilder = AssetRef<PromptAsset>("Goal_RefineImplementationPlan"),
-                        BaselineActions = new List<AgentAction>
-                        {
-                            AssetRef<AgentAction>("RefineImplementationPlan"),
-                            AssetRef<AgentAction>("ResearchImplementation"),
-                            AssetRef<AgentAction>("RequestHelp")
-                        }
-                    },
-
-                    new AgentGoal("Modify Repository"),
-
-                    new AgentGoal("Write Unit Tests"),
-                }
-            };
+            return _assetDataStore.GetHardRef<AgentGoal>("ImplementFeatureGoal");
         }
 
         // TODO gsemple: remove, need to implement asset references in json

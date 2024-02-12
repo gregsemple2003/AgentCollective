@@ -9,12 +9,18 @@ namespace BizDevAgent.DataStore
         object Create(string filePath);
     }
 
+    public class DataStoreEntity
+    { 
+        public string Key { get; set; }
+    }
+
     public class MultiFileDataStore<TEntity> : IDataStore 
-        where TEntity : class
+        where TEntity : DataStoreEntity
     {
         protected readonly JsonSerializerSettings _settings;
 
         private readonly string _baseDirectory;
+        private readonly TypedJsonConverter _typedConverter;
         private readonly Dictionary<string, TEntity> _cache = new Dictionary<string, TEntity>();
         private readonly Dictionary<string, string> _filePathCache = new Dictionary<string, string>();
         private readonly Dictionary<string, IAssetFactory> _factories = new Dictionary<string, IAssetFactory>();
@@ -25,9 +31,10 @@ namespace BizDevAgent.DataStore
             _baseDirectory = baseDirectory ?? throw new ArgumentNullException(nameof(baseDirectory));
             Directory.CreateDirectory(_baseDirectory); // Ensure directory exists
 
+            _typedConverter = new TypedJsonConverter(serviceProvider, this);
             _settings = settings ?? new JsonSerializerSettings
             {
-                Converters = new List<JsonConverter> { new TypedJsonConverter(serviceProvider, this) },
+                Converters = new List<JsonConverter> { _typedConverter },
                 ContractResolver = new Newtonsoft.Json.Serialization.DefaultContractResolver
                 {
                     IgnoreSerializableInterface = true,
@@ -70,9 +77,17 @@ namespace BizDevAgent.DataStore
                 var extension = Path.GetExtension(filePath).ToLower();
                 if (_factories.TryGetValue(extension, out IAssetFactory factory))
                 {
+                    // Create entity
                     var entity = (TEntity)factory.Create(filePath);
-                    PostLoad(entity);
+                    entity.Key = key;
                     _cache[key] = entity;
+
+                    // Execute post loads in reverse load order, children first
+                    foreach (var loadedEntity in _typedConverter.PendingPostLoads)
+                    {
+                        PostLoad((TEntity)loadedEntity);
+                    }
+                    _typedConverter.PendingPostLoads.Clear();
                     return entity;
                 }
             }

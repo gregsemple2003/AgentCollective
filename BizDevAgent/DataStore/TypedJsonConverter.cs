@@ -14,6 +14,8 @@ namespace BizDevAgent.DataStore
         private static readonly Dictionary<string, Type> _typeIdToType;
         private static readonly Dictionary<Type, string> _typeToTypeId;
 
+        public readonly List<DataStoreEntity> PendingPostLoads;
+
         private readonly IServiceProvider _serviceProvider;
         private readonly IDataStore _dataStore;
 
@@ -27,6 +29,7 @@ namespace BizDevAgent.DataStore
         {
             _serviceProvider = serviceProvider;
             _dataStore = dataStore;
+            PendingPostLoads = new List<DataStoreEntity>();
         }
 
         public static string GetTypeId(Type type)
@@ -120,6 +123,7 @@ namespace BizDevAgent.DataStore
                     throw new InvalidOperationException($"Failure to resolve object with key '{key}' in data store {_dataStore.GetType()}");
                 }
 
+                PendingPostLoads.Add(obj as DataStoreEntity);
                 return obj;
             }
 
@@ -141,6 +145,11 @@ namespace BizDevAgent.DataStore
 
                 // Try to resolve the target type from the service provider
                 instance = _serviceProvider.GetService(targetType) ?? Activator.CreateInstance(targetType);
+
+                if (instance is DataStoreEntity)
+                {
+                    PendingPostLoads.Add((DataStoreEntity)instance);
+                }
 
                 // Deserialize the JSON data onto the instance
                 using (var subReader = jo.CreateReader())

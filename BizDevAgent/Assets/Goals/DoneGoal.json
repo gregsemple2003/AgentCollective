@@ -1,0 +1,7 @@
+{
+  "TypeId": "AgentGoal",
+  "Title": "Done",
+  "StackDescription": "You have completed this goal.",
+  "OptionBuilder": "Done_Option",
+  "PromptBuilder": "Done_Goal"
+}

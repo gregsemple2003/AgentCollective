@@ -1,5 +1,0 @@
-{
-  "TypeId": "AgentAction",
-  "Title": "Request Help",
-  "PromptTemplatePath": "Action_RequestHelp"
-}

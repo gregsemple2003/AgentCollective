@@ -6,7 +6,7 @@ namespace BizDevAgent.DataStore
     /// An object that is mapped to a data file on disk, kept in source control.
     /// </summary>
     [TypeId("Asset")]
-    public class Asset
+    public class Asset : DataStoreEntity
     {
         internal virtual void PostLoad(AssetDataStore assetDataStore)
         {

@@ -1,0 +1,48 @@
+{
+  "TypeId": "AgentGoal",
+  "Title": "Implement Feature",
+  "StackDescription": "You are being tasked with the job to implement a feature in C# by modifying an existing repository.",
+  "RequiredSubgoals": [
+    {
+      "TypeId": "AgentGoal",
+      "Title": "Refine Implementation Plan",
+      "StackDescription": "Your goal is to create or refine an implementation plan, which are step-by-step instructions on exactly which classes or methods to modify and how.\n\nYou must ensure that the classes or methods being modified actually exist by researching the code first.",
+      "OptionalSubgoals": [
+        {
+          "TypeId": "AgentGoal",
+          "Title": "Research Implementation",
+          "StackDescription": "But first, you're going to write some calls to our research API",
+          "OptionBuilder": "ResearchImplementation_Option",
+          "StackBuilder": "ResearchImplementation_Stack",
+          "OptionalSubgoals": [
+            {
+              "TypeId": "AgentGoal",
+              "Title": "Evaluate Research",
+              "OptionBuilder": "EvaluateResearch_Option",
+              "StackBuilder": "EvaluateResearch_Stack"
+            }
+          ]
+        },
+        {
+          "TypeId": "AgentGoal",
+          "Title": "Request Help",
+          "OptionBuilder": "RequestHelp_Option",
+          "StackBuilder": "RequestHelp_Stack"
+        }
+      ]
+    },
+    {
+      "TypeId": "AgentGoal",
+      "Title": "Modify Repository"
+    },
+    {
+      "TypeId": "AgentGoal",
+      "Title": "Refine Unit Tests"
+    },
+    {
+      "TypeId": "AgentGoal",
+      "Title": "Write Unit Tests"
+    }
+  ]
+
+}

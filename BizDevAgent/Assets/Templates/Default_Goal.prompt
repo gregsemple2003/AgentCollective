@@ -1,0 +1,39 @@
+GOAL  
+
+{{#each Goals}}
+{{StackDescription}}
+
+{{/each}}
+
+FEATURE
+
+{{FeatureSpecification}}
+
+MEMORY
+
+Your long-term memory has the following state:
+
+{{#each Variables}}
+{{Name}} = {{Value}}
+
+{{/each}}
+
+NEW OBSERVATIONS
+
+You have just observed the following things:
+
+{{#each Observation}}
+{{Description}}
+
+{{/each}}
+
+ACTIONS
+
+You can take ONLY ONE of the following actions.  Take the action that advances you best towards reaching the final goal of carefully implementing the given feature.
+
+{{#each OptionalSubgoals}}
+Action {{Index}}: {{Title}}
+{{OptionDescription}}
+If you choose this action, include '{{TokenPrefix}}{{OptionBuilder.Key}}' in your response, along with other information you wish to provide.
+
+{{/each}}

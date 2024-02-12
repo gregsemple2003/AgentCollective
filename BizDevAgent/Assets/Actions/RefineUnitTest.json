@@ -1,5 +1,0 @@
-{
-  "TypeId": "AgentAction",
-  "Title": "Refine Unit Test",
-  "PromptTemplatePath": "Action_RefineUnitTest"
-}

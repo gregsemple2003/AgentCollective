@@ -1,5 +1,0 @@
-{
-  "TypeId": "AgentAction",
-  "Title": "Implementat Unit Test",
-  "PromptTemplatePath": "Action_ImplementUnitTest"
-}

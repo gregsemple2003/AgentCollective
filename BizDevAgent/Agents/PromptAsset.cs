@@ -5,15 +5,17 @@ namespace BizDevAgent.Agents
 {
     public class PromptContext
     {
+        public List<AgentGoal> Goals { get; set; }
         public List<AgentObservation> Observations { get; set; }
-        public List<AgentAction> Actions { get; set; }
+        public List<AgentGoal> OptionalSubgoals { get; set; }
         public List<AgentVariable> Variables { get; set; }
         public Dictionary<string, object> AdditionalData { get; set; }
-
+        public string FeatureSpecification { get; set; }
+        
         public PromptContext() 
         { 
             Observations = new List<AgentObservation>();
-            Actions = new List<AgentAction>();
+            OptionalSubgoals = new List<AgentGoal>();
             Variables = new List<AgentVariable>();
             AdditionalData = new Dictionary<string, object>();
         }
@@ -35,6 +37,7 @@ namespace BizDevAgent.Agents
         }
     }
 
+    [TypeId("Prompt")]
     public class PromptAsset : Asset
     {
         private readonly HandlebarsTemplate<object, object> _promptTemplate;

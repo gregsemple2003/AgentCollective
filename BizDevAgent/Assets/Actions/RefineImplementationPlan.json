@@ -1,5 +1,0 @@
-{
-  "TypeId": "AgentAction",
-  "Title": "Refine Implementation Plan",
-  "PromptTemplatePath": "Action_RefineImplementationPlan"
-}
