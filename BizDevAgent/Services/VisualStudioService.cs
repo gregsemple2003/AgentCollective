@@ -42,7 +42,7 @@ namespace BizDevAgent.Services
             if (!result.Success)
             {
                 // Handle compilation failures
-                return null;
+                throw new InvalidOperationException("Injected code has compile errors");
             }
 
             ms.Seek(0, SeekOrigin.Begin);

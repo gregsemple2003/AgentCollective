@@ -6,6 +6,43 @@ using System.Text;
 namespace BizDevAgent.Services
 {
     /// <summary>
+    /// A SyntaxRewriter to rename classes and their constructors.
+    /// </summary>
+    public class ClassAndConstructorRenamer : CSharpSyntaxRewriter
+    {
+        private readonly string _oldClassName;
+        private readonly string _newClassName;
+
+        public ClassAndConstructorRenamer(string oldClassName, string newClassName)
+        {
+            _oldClassName = oldClassName;
+            _newClassName = newClassName;
+        }
+
+        public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node)
+        {
+            // Rename the class if it matches the old class name
+            if (node.Identifier.Text == _oldClassName)
+            {
+                return node.WithIdentifier(SyntaxFactory.Identifier(_newClassName));
+            }
+
+            return base.VisitClassDeclaration(node);
+        }
+
+        public override SyntaxNode VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
+        {
+            // Rename the constructor if its identifier matches the old class name
+            if (node.Identifier.Text == _oldClassName)
+            {
+                return node.WithIdentifier(SyntaxFactory.Identifier(_newClassName));
+            }
+
+            return base.VisitConstructorDeclaration(node);
+        }
+    }
+
+    /// <summary>
     /// Replace method bodies by applying the given transformation.  Used by the code summarization routines.
     /// </summary>
     public class MethodBodyRewriter : CSharpSyntaxRewriter
@@ -107,6 +144,16 @@ namespace BizDevAgent.Services
 
         public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node)
         {
+            // Check if the method has the [HideFromSummary] attribute
+            bool hasHideFromSummaryAttribute = node.AttributeLists.SelectMany(list => list.Attributes)
+                .Any(attr => attr.Name.ToString().EndsWith("HideFromSummary"));
+
+            if (hasHideFromSummaryAttribute)
+            {
+                // Exclude this method from the public API skeleton
+                return null;
+            }
+
             // Replace method body with a semicolon for public methods
             if (node.Modifiers.Any(SyntaxKind.PublicKeyword))
             {
@@ -177,8 +224,12 @@ namespace BizDevAgent.Services
                 throw new InvalidOperationException($"Found {classDeclarationsList.Count} classes named '{oldClassName}' to rename");
             }
 
-            // Create a new root with the renamed classes
-            var newRoot = root.ReplaceNodes(classDeclarations, (node, _) => node.WithIdentifier(SyntaxFactory.Identifier(newClassName)));
+            // Create a rewriter to replace class and constructor identifiers
+            var rewriter = new ClassAndConstructorRenamer(oldClassName, newClassName);
+            var newRoot = rewriter.Visit(root);
+
+            var rewriter2 = new ClassAndConstructorRenamer(oldClassName, newClassName);
+            newRoot = rewriter2.Visit(newRoot);
 
             // Return the modified source code
             return newRoot.ToFullString();

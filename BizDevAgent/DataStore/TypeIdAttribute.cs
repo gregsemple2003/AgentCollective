@@ -10,4 +10,16 @@
             Id = id;
         }
     }
+
+    /// <summary>
+    /// Serialize entity references as string key.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Class, Inherited = false)]
+    public class EntityReferenceTypeAttribute : Attribute
+    {
+        public EntityReferenceTypeAttribute()
+        {
+        }
+    }
+
 }

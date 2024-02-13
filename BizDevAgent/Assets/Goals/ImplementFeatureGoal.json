@@ -19,6 +19,7 @@
             {
               "TypeId": "AgentGoal",
               "Title": "Evaluate Research",
+              "AutoComplete": true,
               "OptionDescription": { "Template": "EvaluateResearch_Option" },
               "StackDescription": { "Template": "EvaluateResearch_Stack" }
             }

@@ -108,7 +108,8 @@ namespace BizDevAgent.Services
     {
         private readonly OpenAIAPI _api;
         private readonly PromptResponseCacheDataStore _promptResponseCache;
-        private readonly OpenAI_API.Models.Model _model;
+        private readonly OpenAI_API.Models.Model _defaultModel;
+        private readonly OpenAI_API.Models.Model _lowTierModel;
 
         private static string DataPath => Path.Combine(Paths.GetDataPath(), "PromptCacheDB");
 
@@ -117,7 +118,8 @@ namespace BizDevAgent.Services
             var apiKey = configuration.GetValue<string>("OpenAiApiKey");
             _api = new OpenAIAPI(apiKey);
             _promptResponseCache = new PromptResponseCacheDataStore(DataPath);
-            _model = new OpenAI_API.Models.Model("gpt-4-0125-preview") { OwnedBy = "openai" };
+            _defaultModel = new OpenAI_API.Models.Model("gpt-4-0125-preview") { OwnedBy = "openai" };
+            _lowTierModel = new OpenAI_API.Models.Model("gpt-3.5-turbo-0125") { OwnedBy = "openai" };
         }
 
         public IResponseParser CreateResponseParser()
@@ -125,10 +127,16 @@ namespace BizDevAgent.Services
             return new OpenAiResponseParser();
         }
 
-        public async Task<ChatConversationResult> ChatCompletion(string prompt, Conversation conversation = null, bool allowCaching = true)
+        public OpenAI_API.Models.Model GetLowTierModel()
+        {
+            return _lowTierModel;
+        }
+
+        public async Task<ChatConversationResult> ChatCompletion(string prompt, Conversation conversation = null, bool allowCaching = true, OpenAI_API.Models.Model modelOverride = null)
         {
             var temperature = 0.0;
-            string cacheKey = $"{_model.ModelID}_{temperature}_{prompt}";
+            var model = modelOverride ?? _defaultModel;
+            string cacheKey = $"{model.ModelID}_{temperature}_{prompt}";
 
             var cachedResponses = allowCaching ? await _promptResponseCache.Get(cacheKey) : null;
             if (cachedResponses != null && cachedResponses.Count >= 1)
@@ -154,7 +162,7 @@ namespace BizDevAgent.Services
                 {
                     // Call OpenAI API for a response
                     conversation = _api.Chat.CreateConversation();
-                    conversation.Model = _model;
+                    conversation.Model = model;
                     conversation.RequestParameters.Temperature = temperature;
                 }
                 conversation.AppendUserInput(prompt);
@@ -167,7 +175,7 @@ namespace BizDevAgent.Services
                 if (isResponseUnique)
                 {
                     // Cache the new response if it's unique
-                    var newEntry = new PromptResponseCacheEntry { ModelId = _model.ModelID, Temperature = temperature, Prompt = prompt, Response = message, TimeGenerated = DateTime.UtcNow };
+                    var newEntry = new PromptResponseCacheEntry { ModelId = model.ModelID, Temperature = temperature, Prompt = prompt, Response = message, TimeGenerated = DateTime.UtcNow };
                     var entries = cachedResponses ?? new List<PromptResponseCacheEntry>();
                     entries.Add(newEntry);
                     _promptResponseCache.Add(entries, shouldOverwrite: true);

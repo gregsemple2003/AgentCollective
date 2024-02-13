@@ -83,13 +83,18 @@ namespace BizDevAgent.DataStore
 
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
-            JObject jo = JObject.FromObject(value);
             var typeAttr = value.GetType().GetCustomAttribute<TypeIdAttribute>();
+            var refAttr = value.GetType().GetCustomAttribute<EntityReferenceTypeAttribute>();
             if (typeAttr != null)
             {
+                JObject jo = JObject.FromObject(value);
                 jo.Add("TypeId", typeAttr.Id);
+                jo.WriteTo(writer);
             }
-            jo.WriteTo(writer);
+            else if (refAttr != null)
+            {
+                var enttiy = (DataStoreEntity)value;
+            }
         }
 
         public object ReadJsonWithoutConverter(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)

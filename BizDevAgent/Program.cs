@@ -11,7 +11,7 @@ using System;
 class Program
 {
     private static string GameSeriesDataPath => Path.Combine(Paths.GetDataPath(), "GameSeriesDB");
-    private static string SourceSummaryDataPath => Path.Combine(Paths.GetDataPath(), "SourceSummaryDB");    
+    private static string SourceSummaryDataPath => Path.Combine(Paths.GetDataPath(), "RepositorySummaryDB");    
     private static string GameDataPath => Path.Combine(Paths.GetDataPath(), "games.json");
     private static string JobDataPath => Path.Combine(Paths.GetDataPath(), "jobs.json");
     private static string CompanyDataPath => Path.Combine(Paths.GetDataPath(), "companies.json");
@@ -53,9 +53,9 @@ class Program
         {
             return new GameSeriesDataStore(GameSeriesDataPath);
         });
-        serviceCollection.AddSingleton<SourceSummaryDataStore>(serviceProvider =>
+        serviceCollection.AddSingleton<RepositorySummaryDataStore>(serviceProvider =>
         {
-            return new SourceSummaryDataStore(SourceSummaryDataPath);
+            return new RepositorySummaryDataStore(SourceSummaryDataPath);
         });
         serviceCollection.AddSingleton<GameDataStore>(serviceProvider =>
         {
@@ -75,7 +75,7 @@ class Program
         var companyDataStore = serviceProvider.GetRequiredService<CompanyDataStore>();
         var jobDataStore = serviceProvider.GetRequiredService<JobDataStore>();
         var websiteDataStore = serviceProvider.GetRequiredService<WebsiteDataStore>();
-        var sourceSummaryDataStore = serviceProvider.GetRequiredService<SourceSummaryDataStore>();
+        var repositorySummaryDataStore = serviceProvider.GetRequiredService<RepositorySummaryDataStore>();
         var jobRunner = serviceProvider.GetRequiredService<JobRunner>();
         var visualStudioService = serviceProvider.GetRequiredService<VisualStudioService>();
         var codeAnalysisService = serviceProvider.GetRequiredService<CodeAnalysisService>();
@@ -95,21 +95,18 @@ class Program
         var jobs = await jobDataStore.LoadAll();
 
         // Run jobs until we're told to exit
+        await jobRunner.RunJob(new UpdateRepositorySummaryJob(repositorySummaryDataStore, codeAnalysisService, repositoryQueryService, languageModelService, @"c:\Features\BizDevAgent_convertxml"));
 
-        //var result = await languageModelService.ChatCompletion("How are you doing today?  I was hoping that you are fine.  But if you are not, please tell me.", allowCaching: false);
-        //result = await languageModelService.ChatCompletion("Tell me about the weather?  How does it make you feel?", result.Conversation, allowCaching: false);
-        //result = await languageModelService.ChatCompletion("How is your Aunt Linda?  Is she getting on in years?", result.Conversation, allowCaching: false);
-
-        await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitService, repositoryQueryService, codeAnalysisService, assetDataStore, languageModelService, visualStudioService, serviceProvider)
-        {
-            GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
-            LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",
-            FeatureSpecification = @"Convert any data load or saving functionality from JSON to XML.",
-            BuildAgent = new BatchFileBuildCommand
-            {
-                ScriptPath = "Build.bat"
-            }
-        });
+        //await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitService, repositoryQueryService, codeAnalysisService, assetDataStore, languageModelService, visualStudioService, serviceProvider, jobRunner)
+        //{
+        //    GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
+        //    LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",
+        //    FeatureSpecification = @"Convert any data load or saving functionality from JSON to XML.",
+        //    BuildAgent = new BatchFileBuildCommand
+        //    {
+        //        ScriptPath = "Build.bat"
+        //    }
+        //});
         //await jobRunner.RunJob(new ProgrammerResearchJob(visualStudioService, serviceProvider, jobRunner));
         //await jobRunner.RunJob(new ProgrammerModifyCode(gitService, diffFileContents));
         //await jobRunner.RunJob(new ResearchCompanyJob(companyDataStore, serviceProvider.GetRequiredService<WebSearchAgent>()));

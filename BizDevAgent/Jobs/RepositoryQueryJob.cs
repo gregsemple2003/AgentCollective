@@ -19,7 +19,7 @@ namespace BizDevAgent.Jobs
             var repositoryQuerySession = _repositoryQueryService.CreateSession(_localRepoPath);
 
             // your queries go here
-            await repositoryQuerySession.PrintFileSkeleton("SomeFile.cs");
+            await repositoryQuerySession.PrintFunctionSourceCode("AssetDataStore", "Get");
         }
     }
 }

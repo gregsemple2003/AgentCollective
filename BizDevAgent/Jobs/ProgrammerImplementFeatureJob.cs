@@ -8,9 +8,20 @@ using System.Text.RegularExpressions;
 using AngleSharp.Dom;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using Newtonsoft.Json;
 
 namespace BizDevAgent.Jobs
 {
+    public class ImplementationStep
+    { 
+        public int Step { get; set; }
+        public string Description { get; set; }
+    }
+    public class ImplementationPlan
+    {
+        public List<ImplementationStep> Steps { get; set; }
+    }
+
     /// <summary>
     /// Implement a feature on a remote Git repo given the feature specification in natural language.
     /// </summary>
@@ -33,8 +44,10 @@ namespace BizDevAgent.Jobs
         private readonly AgentGoal _doneGoal;
         private readonly PromptAsset _goalPrompt;
         private readonly RepositoryQuerySession _repositoryQuerySession;
-        
-        public ProgrammerImplementFeatureJob(GitService gitService, RepositoryQueryService repositoryQueryService, CodeAnalysisService codeAnalysisService, AssetDataStore assetDataStore, LanguageModelService languageModelService, VisualStudioService visualStudioService, IServiceProvider serviceProvider)
+        private readonly JobRunner _jobRunner;
+
+
+        public ProgrammerImplementFeatureJob(GitService gitService, RepositoryQueryService repositoryQueryService, CodeAnalysisService codeAnalysisService, AssetDataStore assetDataStore, LanguageModelService languageModelService, VisualStudioService visualStudioService, IServiceProvider serviceProvider, JobRunner jobRunner)
         {
             _gitService = gitService;
             _repositoryQueryService = repositoryQueryService;
@@ -43,6 +56,7 @@ namespace BizDevAgent.Jobs
             _languageModelService = languageModelService;
             _visualStudioService = visualStudioService;
             _serviceProvider = serviceProvider;
+            _jobRunner = jobRunner;
 
             _languageModerParser = _languageModelService.CreateResponseParser();
             _repositoryQuerySession = _repositoryQueryService.CreateSession(Paths.GetSourceControlRootPath());
@@ -66,8 +80,16 @@ namespace BizDevAgent.Jobs
             var goalTree = CreateGoalTree();
 
             // Initialize agent
+            var implementationPlan = new ImplementationPlan
+            {
+                Steps = new List<ImplementationStep> 
+                { 
+                    new ImplementationStep { Step = 1, Description = "Example step, feel free to modify." }
+                }
+            };
+            var implementationPlanJson = JsonConvert.SerializeObject(implementationPlan);
             var agentState = new AgentState();
-            agentState.Variables.Add(new AgentVariable { Name = "ImplementationPlan", Value = "{}" });
+            agentState.Variables.Add(new AgentVariable { Name = "ImplementationPlan", Value = implementationPlanJson });
             agentState.Variables.Add(new AgentVariable { Name = "Conclusions", Value = "{}" });
             agentState.Goals.Push(goalTree);
             agentState.Goals.Push(goalTree.RequiredSubgoals[0]);
@@ -95,6 +117,7 @@ namespace BizDevAgent.Jobs
                 {
                     throw new InvalidOperationException("The chat API call failed to return a choice.");
                 }
+                agentState.Observations.Clear();
 
                 // Figure out which action it is taking.
                 var response = chatResult.ChatResult.Choices[0].Message.TextContent;
@@ -108,32 +131,47 @@ namespace BizDevAgent.Jobs
                 {
                     var snippets = _languageModerParser.ExtractSnippets(response);
 
+                    // Run the research job and gather output
+                    var researchJobOutput = string.Empty;
                     foreach(var snippet in snippets)
                     {
                         if (snippet.LanguageId == "csharp")
                         {
-                            // rename the class
-                            var newResearchClassName = $"CodeAnalysisJob_{Guid.NewGuid()}";
-                            var newContents = _codeAnalysisService.RenameClass(snippet.Contents, "CodeAnalysisJob", newResearchClassName);
-                            var assembly = _visualStudioService.InjectCode(snippet.Contents);
-                            var newResearchClass = assembly.GetType(newResearchClassName);
-                            var newResearchJob = (Job)ActivatorUtilities.CreateInstance(_serviceProvider, newResearchClass);
-
-                            //var jobResult = await _jobRunner.RunJob(job);
-                            var x = 3;
+                            var researchClassName = $"{nameof(RepositoryQueryJob)}_{Guid.NewGuid().ToString("N")}";
+                            var researchClassSource = _codeAnalysisService.RenameClass(snippet.Contents, nameof(RepositoryQueryJob).ToString(), researchClassName);
+                            var researchAssembly = _visualStudioService.InjectCode(researchClassSource);
+                            foreach(var type in researchAssembly.GetTypes())
+                            {
+                                if (type.Name.Contains(researchClassName))
+                                {
+                                    var researchJob = (Job)ActivatorUtilities.CreateInstance(_serviceProvider, type, LocalRepoPath);
+                                    var researchJobResult = await _jobRunner.RunJob(researchJob);
+                                    researchJobOutput += researchJobResult.OutputStdOut;
+                                }
+                            }
                         }
                     }
+
+                    agentState.Observations.Add(new AgentObservation() { Description = researchJobOutput});
                 }
 
                 // Process action to change agent state
-                var chosenGoal = FindChosenGoal(generatePromptResult, responseTokens);
-                if (chosenGoal == _doneGoal) 
+                var currentGoal = agentState.Goals.Peek();
+                if (currentGoal.AutoComplete)
                 {
                     agentState.Goals.Pop();
                 }
                 else
                 {
-                    agentState.Goals.Push(chosenGoal);
+                    var chosenGoal = FindChosenGoal(generatePromptResult, responseTokens);
+                    if (chosenGoal == _doneGoal)
+                    {
+                        agentState.Goals.Pop();
+                    }
+                    else
+                    {
+                        agentState.Goals.Push(chosenGoal);
+                    }
                 }
             }
         }
@@ -180,26 +218,31 @@ namespace BizDevAgent.Jobs
         public class GeneratePromptResult
         {
             public string Prompt { get; set; }
-            public PromptContext PromptContext { get; set; }
+            public AgentPromptContext PromptContext { get; set; }
         }
         private async Task<GeneratePromptResult> GeneratePrompt(AgentState agentState)
         {
             // Fill-in prompt context from current agent state
-            var promptContext = new PromptContext();
+            var promptContext = new AgentPromptContext();
             var repositoryQuerySessionApi = await GenerateRepositoryQueryApi();
-            var repositoryQuerySample = _repositoryQuerySession.FindFileInRepo("RepositoryQueryJob.cs");
-            var currentGoal = agentState.Goals.Peek();
+            var repositoryQuerySample = await _repositoryQuerySession.FindFileInRepo("RepositoryQueryJob.cs");
             promptContext.AdditionalData["RepositoryQuerySessionApi"] = repositoryQuerySessionApi;
+            promptContext.AdditionalData["RepositoryQuerySessionSample"] = repositoryQuerySample.Contents;            
             promptContext.Variables = agentState.Variables;
+            promptContext.Observations = agentState.Observations;
             promptContext.Goals = agentState.Goals.Reverse().ToList();
             promptContext.FeatureSpecification = FeatureSpecification;
 
             // Construct a special "done" goal.
-            promptContext.OptionalSubgoals.Add(_doneGoal);
-            _doneGoal.OptionDescription = currentGoal.DoneDescription;
-            if (currentGoal.DoneDescription == null) 
+            var currentGoal = agentState.Goals.Peek();
+            if (!currentGoal.AutoComplete)
             {
-                throw new InvalidDataException($"The goal '{currentGoal.Title}' must have a {nameof(currentGoal.DoneDescription)}");
+                promptContext.OptionalSubgoals.Add(_doneGoal);
+                if (currentGoal.DoneDescription == null && currentGoal.RequiresDoneDescription())
+                {
+                    throw new InvalidDataException($"The goal '{currentGoal.Title}' must have a {nameof(currentGoal.DoneDescription)}");
+                }
+                _doneGoal.OptionDescription = currentGoal.DoneDescription;
             }
 
             // Run template substitution based on context
@@ -213,6 +256,8 @@ namespace BizDevAgent.Jobs
                 optionalSubgoal.OptionDescription.Bind(promptContext);
                 optionalSubgoal.StackDescription.Bind(promptContext);
             }
+            promptContext.ShouldDisplayActions = promptContext.OptionalSubgoals.Count > 0;
+            promptContext.ShouldDisplayObservations = promptContext.Observations.Count > 0;
 
             // Generate final prompt
             var prompt = _goalPrompt.Evaluate(promptContext);

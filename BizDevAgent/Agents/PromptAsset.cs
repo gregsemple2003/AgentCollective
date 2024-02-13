@@ -3,7 +3,7 @@ using BizDevAgent.DataStore;
 
 namespace BizDevAgent.Agents
 {
-    public class PromptContext
+    public class AgentPromptContext
     {
         public List<AgentGoal> Goals { get; set; }
         public List<AgentObservation> Observations { get; set; }
@@ -11,8 +11,10 @@ namespace BizDevAgent.Agents
         public List<AgentVariable> Variables { get; set; }
         public Dictionary<string, object> AdditionalData { get; set; }
         public string FeatureSpecification { get; set; }
-        
-        public PromptContext() 
+        public bool ShouldDisplayActions { get; set; }
+        public bool ShouldDisplayObservations { get; set; }
+
+        public AgentPromptContext() 
         { 
             Observations = new List<AgentObservation>();
             OptionalSubgoals = new List<AgentGoal>();
@@ -47,7 +49,7 @@ namespace BizDevAgent.Agents
             _promptTemplate = Handlebars.Compile(promptTemplateText);
         }
 
-        public string Evaluate(PromptContext promptContext)
+        public string Evaluate(AgentPromptContext promptContext)
         {
             return _promptTemplate(promptContext);
         }

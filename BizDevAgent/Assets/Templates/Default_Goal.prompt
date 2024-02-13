@@ -17,16 +17,20 @@ Your long-term memory has the following state:
 {{Name}} = {{Value}}
 
 {{/each}}
+If you wish to modify the above, please output the new json as a snippet.
 
+{{#if ShouldDisplayObservations}}
 NEW OBSERVATIONS
 
 You have just observed the following things:
 
-{{#each Observation}}
+{{#each Observations}}
 {{Description}}
 
 {{/each}}
+{{/if}}
 
+{{#if ShouldDisplayActions}}
 ACTIONS
 
 You can take ONLY ONE of the following actions.  Take the action that advances you best towards reaching the final goal of carefully implementing the given feature.
@@ -37,3 +41,5 @@ Action {{Index}}: {{Title}}
 If you choose this action, include '{{TokenPrefix}}{{OptionDescription.Key}}' in your response, along with other information you wish to provide.
 
 {{/each}}
+{{/if}}
+

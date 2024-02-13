@@ -20,7 +20,7 @@ namespace BizDevAgent.Agents
             }
         }
 
-        public void Bind(PromptContext promptContext)
+        public void Bind(AgentPromptContext promptContext)
         {
             if (Template != null)
             {
@@ -46,6 +46,11 @@ namespace BizDevAgent.Agents
         /// A short title describing what this goal is supposed to accomplish.
         /// </summary>
         public string Title { get; set; }
+
+        /// <summary>
+        /// After executing this state's prompt and response logic, pop it return control to parent goal.
+        /// </summary>
+        public bool AutoComplete {  get; set; }
 
         /// <summary>
         /// Subgoals which must be compled in order for the parent to be complete.
@@ -74,6 +79,13 @@ namespace BizDevAgent.Agents
         public OverridableText DoneDescription { get; set; }
 
         public string TokenPrefix => "@";
+
+        public bool RequiresDoneDescription()
+        {
+            if (AutoComplete) return false;
+
+            return true;
+        }
 
         public AgentGoal()
         {

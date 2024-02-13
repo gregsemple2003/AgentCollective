@@ -1,5 +1,8 @@
-﻿using Newtonsoft.Json;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Newtonsoft.Json;
 using RocksDbSharp;
+using System;
+using System.ComponentModel;
 using System.Reflection;
 
 namespace BizDevAgent.DataStore
@@ -48,13 +51,17 @@ namespace BizDevAgent.DataStore
         }
 
         protected abstract string GetKey(TEntity entity);
+        protected virtual string NormalizeKey(string key)
+        {
+            return key;
+        }
 
         public void Add(TEntity entity, bool shouldOverwrite = false)
         {
             if (entity == null) throw new ArgumentNullException(nameof(entity));
 
             // Generate a key for the entity
-            var key = GetKey(entity);
+            var key = NormalizeKey(GetKey(entity));
             if (string.IsNullOrWhiteSpace(key))
             {
                 throw new ArgumentException("The key for the entity cannot be null or whitespace.", nameof(entity));
@@ -90,9 +97,10 @@ namespace BizDevAgent.DataStore
             All.Add(entity);
         }
 
-        public Task<TEntity> Get(string key)
+        public Task<TEntity> Get(string rawKey)
         {
             // Look first in in-memory cache 
+            var key = NormalizeKey(rawKey);
             var existingEntity = All.Find(o => key == GetKey(o));
             if (existingEntity != null)
             {
