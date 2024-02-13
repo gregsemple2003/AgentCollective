@@ -7,10 +7,10 @@ namespace BizDevAgent.Services
     /// <summary>
     /// Hides a method from being included in the public API generation of a class.
     /// </summary>
-    [AttributeUsage(AttributeTargets.Method)]
-    public class HideFromSummaryAttribute : Attribute
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
+    public class AgentApiAttribute : Attribute
     {
-        public HideFromSummaryAttribute()
+        public AgentApiAttribute()
         {
         }
     }

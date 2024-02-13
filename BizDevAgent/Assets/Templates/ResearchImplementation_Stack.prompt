@@ -2,8 +2,8 @@ In order to accomplish the above, you've decided you're going to write C# code t
 
 The research API has a single class with public methods.  When the methods are called, they will log information that tells you about the contents of the repository that you are tasked with modifying.
 
-{{AdditionalData.RepositoryQuerySessionApi}}
+{{{AdditionalData.RepositoryQuerySessionApi}}}
 
 To write C# code to call the research API, you must use the following structure:
 
-{{AdditionalData.RepositoryQuerySessionSample}}
+{{{AdditionalData.RepositoryQuerySessionSample}}}

@@ -9,6 +9,7 @@ namespace BizDevAgent.Services
     /// <summary>
     /// Handles a code query session for a specific local repository.
     /// </summary>
+    [AgentApi]
     public class RepositoryQuerySession
     {
         public string LocalRepoPath { get; internal set; }
@@ -28,6 +29,7 @@ namespace BizDevAgent.Services
         }
 
         // Prints a summary about either a folder or file in the repository.  Use "" for a summary of the entire repository.
+        [AgentApi]
         public async Task PrintRepositoryPathSummary(string path)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintRepositoryPathSummary)}(path = {path}):");
@@ -39,6 +41,7 @@ namespace BizDevAgent.Services
         }
 
         // Prints the full C# code contents of the specified file without any modifications
+        [AgentApi]
         public async Task PrintFileContents(string fileName)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileContents)}(fileName = {fileName}):");
@@ -54,6 +57,7 @@ namespace BizDevAgent.Services
         }
 
         // Prints the file at the specified lineNumber with linesToInclude above the specified lineNumber, as well as linesToInclude below.
+        [AgentApi]
         public async Task PrintFileContentsAroundLine(string fileName, int lineNumber, int linesToInclude)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileContents)}(fileName = {fileName}):");
@@ -70,6 +74,7 @@ namespace BizDevAgent.Services
 
         // Prints lines from files matching the specified pattern that contain the specified text.
         // Similar to Visual Studio's "Find in Files" functionality.
+        [AgentApi]
         public async Task PrintMatchingSourceLines(string fileMatchingPattern, string text, bool caseSensitive = false, bool matchWholeWord = false)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintMatchingSourceLines)}(fileMatchingPattern = {fileMatchingPattern}, text = {text}, caseSensitive = {caseSensitive}, matchWholeWord = {matchWholeWord}):");
@@ -107,6 +112,7 @@ namespace BizDevAgent.Services
             PrintEndOutputWithMessage();
         }
 
+        [AgentApi]
         public async Task PrintFunctionSourceCode(string className, string functionName)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFunctionSourceCode)}(className = {className}, functionName = {functionName}):");
@@ -179,7 +185,6 @@ namespace BizDevAgent.Services
             return Task.CompletedTask;
         }
 
-        [HideFromSummary]
         public async Task<RepositoryFile> FindFileInRepo(string fileName, bool logError = true)
         {
             var repoFiles = await GetAllRepoFiles();
@@ -242,7 +247,6 @@ namespace BizDevAgent.Services
             return null;
         }
 
-        [HideFromSummary]
         public async Task<List<RepositoryFile>> GetAllRepoFiles()
         {
             if (_repoFiles == null)

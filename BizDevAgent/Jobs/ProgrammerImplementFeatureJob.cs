@@ -9,6 +9,8 @@ using AngleSharp.Dom;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using Newtonsoft.Json;
+using Rystem.OpenAi;
+using static BizDevAgent.Jobs.ProgrammerImplementFeatureJob;
 
 namespace BizDevAgent.Jobs
 {
@@ -121,59 +123,80 @@ namespace BizDevAgent.Jobs
 
                 // Figure out which action it is taking.
                 var response = chatResult.ChatResult.Choices[0].Message.TextContent;
-                var responseTokens = _languageModerParser.ExtractResponseTokens(response);
-                if (responseTokens == null || responseTokens.Count != 1)
-                {
-                    throw new InvalidOperationException($"Invalid response tokens: {string.Join(",", responseTokens)}");
-                }
+                var processResult = await ProcessResponse(response, agentState);
 
-                if (response.Contains("EvaluateResearch_Option"))
-                {
-                    var snippets = _languageModerParser.ExtractSnippets(response);
+                // Transition to next step (push or pop)
+                Transition(agentState, processResult.ResponseTokens, generatePromptResult);
+            }
+        }
 
-                    // Run the research job and gather output
-                    var researchJobOutput = string.Empty;
-                    foreach(var snippet in snippets)
+        private void Transition(AgentState agentState, List<string> responseTokens, GeneratePromptResult generatePromptResult)
+        {
+            var currentGoal = agentState.Goals.Peek();
+            if (currentGoal.AutoComplete)
+            {
+                agentState.Goals.Pop();
+                return;
+            }
+
+            var chosenGoal = FindChosenGoal(generatePromptResult, responseTokens);
+            if (chosenGoal == _doneGoal)
+            {
+                agentState.Goals.Pop();
+            }
+            else
+            {
+                agentState.Goals.Push(chosenGoal);
+            }
+        }
+
+        private class ProcessResponseResult
+        { 
+            public List<string> ResponseTokens { get; set; }
+        }
+        private async Task<ProcessResponseResult> ProcessResponse(string response, AgentState agentState)
+        {
+            var result = new ProcessResponseResult();
+            var responseTokens = _languageModerParser.ExtractResponseTokens(response);
+            var currentGoal = agentState.Goals.Peek();
+
+            bool hasResponseToken = responseTokens != null && responseTokens.Count == 1;
+            if (!currentGoal.AutoComplete && !hasResponseToken)
+            {
+                throw new InvalidOperationException($"Invalid response tokens: {string.Join(",", responseTokens)}");
+            }
+
+            // TODO gsemple: fix this
+            if (response.Contains("EvaluateResearch_Option"))
+            {
+                var snippets = _languageModerParser.ExtractSnippets(response);
+
+                // Run the research job and gather output
+                var researchJobOutput = string.Empty;
+                foreach (var snippet in snippets)
+                {
+                    if (snippet.LanguageId == "csharp")
                     {
-                        if (snippet.LanguageId == "csharp")
+                        var researchClassName = $"{nameof(RepositoryQueryJob)}_{Guid.NewGuid().ToString("N")}";
+                        var researchClassSource = _codeAnalysisService.RenameClass(snippet.Contents, nameof(RepositoryQueryJob).ToString(), researchClassName);
+                        var researchAssembly = _visualStudioService.InjectCode(researchClassSource);
+                        foreach (var type in researchAssembly.GetTypes())
                         {
-                            var researchClassName = $"{nameof(RepositoryQueryJob)}_{Guid.NewGuid().ToString("N")}";
-                            var researchClassSource = _codeAnalysisService.RenameClass(snippet.Contents, nameof(RepositoryQueryJob).ToString(), researchClassName);
-                            var researchAssembly = _visualStudioService.InjectCode(researchClassSource);
-                            foreach(var type in researchAssembly.GetTypes())
+                            if (type.Name.Contains(researchClassName))
                             {
-                                if (type.Name.Contains(researchClassName))
-                                {
-                                    var researchJob = (Job)ActivatorUtilities.CreateInstance(_serviceProvider, type, LocalRepoPath);
-                                    var researchJobResult = await _jobRunner.RunJob(researchJob);
-                                    researchJobOutput += researchJobResult.OutputStdOut;
-                                }
+                                var researchJob = (Job)ActivatorUtilities.CreateInstance(_serviceProvider, type, LocalRepoPath);
+                                var researchJobResult = await _jobRunner.RunJob(researchJob);
+                                researchJobOutput += researchJobResult.OutputStdOut;
                             }
                         }
                     }
-
-                    agentState.Observations.Add(new AgentObservation() { Description = researchJobOutput});
                 }
 
-                // Process action to change agent state
-                var currentGoal = agentState.Goals.Peek();
-                if (currentGoal.AutoComplete)
-                {
-                    agentState.Goals.Pop();
-                }
-                else
-                {
-                    var chosenGoal = FindChosenGoal(generatePromptResult, responseTokens);
-                    if (chosenGoal == _doneGoal)
-                    {
-                        agentState.Goals.Pop();
-                    }
-                    else
-                    {
-                        agentState.Goals.Push(chosenGoal);
-                    }
-                }
+                agentState.Observations.Add(new AgentObservation() { Description = researchJobOutput });
             }
+
+            result.ResponseTokens = responseTokens;
+            return result;
         }
 
         private AgentGoal FindChosenGoal(GeneratePromptResult generatePromptResult, List<string> responseTokens)
@@ -210,7 +233,7 @@ namespace BizDevAgent.Jobs
 
         private async Task<string> GenerateRepositoryQueryApi()
         {
-            var repositoryFile = await _repositoryQuerySession.FindFileInRepo("RepositoryQueryService.cs", logError: false);
+            var repositoryFile = await _repositoryQuerySession.FindFileInRepo($"{nameof(RepositoryQuerySession)}.cs", logError: false);
             var repositoryQueryApi = _codeAnalysisService.GeneratePublicApiSkeleton(repositoryFile.Contents);
             return repositoryQueryApi;
         }

@@ -1,20 +1,20 @@
 GOAL  
 
 {{#each Goals}}
-{{StackDescription.Text}}
+{{{StackDescription.Text}}}
 
 {{/each}}
 
 FEATURE
 
-{{FeatureSpecification}}
+{{{FeatureSpecification}}}
 
 MEMORY
 
 Your long-term memory has the following state:
 
 {{#each Variables}}
-{{Name}} = {{Value}}
+{{{Name}}} = {{{Value}}}
 
 {{/each}}
 If you wish to modify the above, please output the new json as a snippet.
@@ -25,7 +25,7 @@ NEW OBSERVATIONS
 You have just observed the following things:
 
 {{#each Observations}}
-{{Description}}
+{{{Description}}}
 
 {{/each}}
 {{/if}}
@@ -36,9 +36,9 @@ ACTIONS
 You can take ONLY ONE of the following actions.  Take the action that advances you best towards reaching the final goal of carefully implementing the given feature.
 
 {{#each OptionalSubgoals}}
-Action {{Index}}: {{Title}}
-{{OptionDescription.Text}}
-If you choose this action, include '{{TokenPrefix}}{{OptionDescription.Key}}' in your response, along with other information you wish to provide.
+Action {{Index}}: {{{Title}}}
+{{{OptionDescription.Text}}}
+If you choose this action, include '{{TokenPrefix}}{{{OptionDescription.Key}}}' in your response, along with other information you wish to provide.
 
 {{/each}}
 {{/if}}

@@ -107,9 +107,10 @@ namespace BizDevAgent.Services
 
         public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node)
         {
-            // Keep only the RepositoryQuerySession class, remove all others
-            // TODO gsemple: remove hard-coding
-            if (node.Identifier.Text != "RepositoryQuerySession")
+            bool hasAgentAttribute = node.AttributeLists.SelectMany(list => list.Attributes)
+                .Any(attr => attr.Name.ToString().EndsWith("AgentApi"));
+
+            if (!hasAgentAttribute)
             {
                 return null;
             }
@@ -145,12 +146,11 @@ namespace BizDevAgent.Services
         public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node)
         {
             // Check if the method has the [HideFromSummary] attribute
-            bool hasHideFromSummaryAttribute = node.AttributeLists.SelectMany(list => list.Attributes)
-                .Any(attr => attr.Name.ToString().EndsWith("HideFromSummary"));
+            bool hasAgentAttribute = node.AttributeLists.SelectMany(list => list.Attributes)
+                .Any(attr => attr.Name.ToString().EndsWith("AgentApi"));
 
-            if (hasHideFromSummaryAttribute)
+            if (!hasAgentAttribute)
             {
-                // Exclude this method from the public API skeleton
                 return null;
             }
 
