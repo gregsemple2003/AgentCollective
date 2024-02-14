@@ -7,6 +7,7 @@ namespace BizDevAgent.Services
     /// <summary>
     /// An service adds a capability to interact with the world in some way (email, linkedin, github, web, etc).
     /// These are typically leveraged by either data stores to fetch data, or jobs which accomplish a specific task.
+    /// All subclasses register as singleton objects, since they are instantiated for the lifetime of the application.
     /// </summary>
     [TypeId("Agent")]
     public class Service
@@ -22,7 +23,7 @@ namespace BizDevAgent.Services
             // Register each job type
             foreach (var type in jobTypes)
             {
-                services.AddTransient(type);
+                services.AddSingleton(type);
             }
         }
     }

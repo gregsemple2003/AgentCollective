@@ -1,4 +1,5 @@
 ﻿using BizDevAgent.DataStore;
+using BizDevAgent.Utilities;
 using static System.Net.Mime.MediaTypeNames;
 using System.Drawing.Printing;
 
@@ -28,7 +29,7 @@ namespace BizDevAgent.Services
         private readonly GitService _gitService;
         private readonly Dictionary<string, RepositoryQuerySession> _sessionsCache = new Dictionary<string, RepositoryQuerySession>();
 
-        public RepositoryQueryService(RepositorySummaryDataStore repositorySummaryDataStore, VisualStudioService visualStudioService, GitService gitService)
+        public RepositoryQueryService(RepositorySummaryDataStore repositorySummaryDataStore, VisualStudioService visualStudioService, GitService gitService, IServiceProvider serviceProvider)
         {
             _repositorySummaryDataStore = repositorySummaryDataStore;
             _visualStudioService = visualStudioService;

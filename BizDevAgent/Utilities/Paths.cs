@@ -32,12 +32,14 @@
 
         public static string GetProjectPath()
         {
-            return Path.Combine(Environment.CurrentDirectory, "..", "..", "..");
+            var path = Path.Combine(Environment.CurrentDirectory, "..", "..", "..");
+            return Path.GetFullPath(path);
         }
 
         public static string GetSourceControlRootPath()
         {
-            return Path.Combine(Paths.GetProjectPath(), "..");
+            var path = Path.Combine(Paths.GetProjectPath(), "..");
+            return Path.GetFullPath(path);
         }
 
         public static void EnsureDirectoryExists(string path)

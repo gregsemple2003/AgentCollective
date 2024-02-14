@@ -150,8 +150,7 @@ namespace BizDevAgent.DataStore
                 object instance;
 
                 // Try to resolve the target type from the service provider
-                //instance = _serviceProvider.GetService(targetType) ?? ActivatorUtilities.CreateInstance(_serviceProvider, targetType);
-                instance = _serviceProvider.GetService(targetType) ?? Activator.CreateInstance(targetType);
+                instance = ActivatorUtilities.CreateInstance(_serviceProvider, targetType);
 
                 if (instance is DataStoreEntity)
                 {

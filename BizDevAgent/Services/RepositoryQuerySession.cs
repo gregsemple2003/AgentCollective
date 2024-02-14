@@ -253,8 +253,6 @@ namespace BizDevAgent.Services
             {
                 _repoFiles = new List<RepositoryFile>();
 
-                // TODO gsemple: this should really be drawn from the git agent
-
                 var listResult = await _gitService.ListRepositoryFiles(LocalRepoPath);
                 if (listResult.IsFailed)
                 {

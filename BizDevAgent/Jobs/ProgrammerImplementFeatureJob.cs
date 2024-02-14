@@ -24,6 +24,19 @@ namespace BizDevAgent.Jobs
         public List<ImplementationStep> Steps { get; set; }
     }
 
+    public class GoalTreeContext
+    {
+        public RepositoryQuerySession RepositoryQuerySession { get; set; }
+
+        private static AsyncLocal<GoalTreeContext> _current = new AsyncLocal<GoalTreeContext>();
+
+        public static GoalTreeContext Current
+        {
+            get => _current.Value;
+            set => _current.Value = value;
+        }
+    }
+
     /// <summary>
     /// Implement a feature on a remote Git repo given the feature specification in natural language.
     /// </summary>
@@ -65,6 +78,25 @@ namespace BizDevAgent.Jobs
             _repositoryQuerySession = _repositoryQueryService.CreateSession(Paths.GetSourceControlRootPath());
             _goalPrompt = _assetDataStore.GetHardRef<PromptAsset>("Default_Goal");
             _doneGoal = _assetDataStore.GetHardRef<AgentGoal>("DoneGoal");
+        }
+
+        public AgentGoal CreateGoalTree()
+        {
+            AgentGoal agentGoal = null;
+            try
+            {
+                GoalTreeContext.Current = new GoalTreeContext()
+                {
+                    RepositoryQuerySession = _repositoryQuerySession
+                };
+                agentGoal = _assetDataStore.GetHardRef<AgentGoal>("ImplementFeatureGoal");
+            }
+            finally
+            {
+                GoalTreeContext.Current = null;
+            }
+
+            return agentGoal;
         }
 
         public async override Task Run()
@@ -161,11 +193,6 @@ namespace BizDevAgent.Jobs
         }
         private ProcessResponseResult ProcessResponse(string response, AgentState agentState)
         {
-            if (response.Contains("EvaluateResearch_Option"))
-            {
-                var x = 3;
-            }
-
             var result = new ProcessResponseResult();
             var responseTokens = _languageModelParser.ExtractResponseTokens(response);
             var currentGoal = agentState.Goals.Peek();
@@ -278,11 +305,6 @@ namespace BizDevAgent.Jobs
                 Prompt = prompt,
                 PromptContext = promptContext
             };
-        }
-
-        private AgentGoal CreateGoalTree()
-        {
-            return _assetDataStore.GetHardRef<AgentGoal>("ImplementFeatureGoal");
         }
 
         // TODO gsemple: remove, need to implement asset references in json

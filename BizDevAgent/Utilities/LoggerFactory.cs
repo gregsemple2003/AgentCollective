@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace BizDevAgent.Utilities
 {
@@ -21,6 +22,15 @@ namespace BizDevAgent.Utilities
 
                 Debug.WriteLine(message);
             }
+        }
+
+        public static void LogFileAndLine(string message,
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
+        {
+            Console.WriteLine($"[{file}:{line}] {message}");
+
+            Debug.WriteLine(message);
         }
     }
 

@@ -6,6 +6,8 @@ namespace BizDevAgent.Jobs
 {
     /// <summary>
     /// A periodic job which runs to perform some task, usually to mutate persistent data.
+    /// All subclasses register as transient objects, since they are instantiated to perform
+    /// some task and then discarded.
     /// </summary>
     [TypeId("Job")]
     public class Job
