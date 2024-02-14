@@ -1,4 +1,5 @@
 ﻿using BizDevAgent.DataStore;
+using BizDevAgent.Services;
 
 namespace BizDevAgent.Agents
 {
@@ -78,6 +79,8 @@ namespace BizDevAgent.Agents
         /// </summary>
         public OverridableText DoneDescription { get; set; }
 
+        public AgentGoalCustomization Customization { get; set; }
+
         public string TokenPrefix => "@";
 
         public bool RequiresDoneDescription()
@@ -85,6 +88,11 @@ namespace BizDevAgent.Agents
             if (AutoComplete) return false;
 
             return true;
+        }
+
+        public void ProcessResponse(string response, AgentState agentState, IResponseParser languageModelParser)
+        {
+            Customization?.ProcessResponse(response, agentState, languageModelParser);
         }
 
         public AgentGoal()

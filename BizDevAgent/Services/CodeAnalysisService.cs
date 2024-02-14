@@ -245,7 +245,6 @@ namespace BizDevAgent.Services
             var newRoot = rewriter.Visit(syntaxTree.GetRoot());
 
             var newCode = newRoot.NormalizeWhitespace().ToFullString();
-            Console.WriteLine(newCode);
 
             return newCode;
         }

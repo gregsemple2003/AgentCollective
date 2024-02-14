@@ -40,16 +40,16 @@ namespace BizDevAgent.Jobs
         private readonly CodeAnalysisService _codeAnalysisService;
         private readonly AssetDataStore _assetDataStore;
         private readonly LanguageModelService _languageModelService;
-        private readonly IResponseParser _languageModerParser;
+        private readonly IResponseParser _languageModelParser;
         private readonly VisualStudioService _visualStudioService;
         private readonly IServiceProvider _serviceProvider;
         private readonly AgentGoal _doneGoal;
         private readonly PromptAsset _goalPrompt;
         private readonly RepositoryQuerySession _repositoryQuerySession;
         private readonly JobRunner _jobRunner;
+        private readonly ILogger _logger;
 
-
-        public ProgrammerImplementFeatureJob(GitService gitService, RepositoryQueryService repositoryQueryService, CodeAnalysisService codeAnalysisService, AssetDataStore assetDataStore, LanguageModelService languageModelService, VisualStudioService visualStudioService, IServiceProvider serviceProvider, JobRunner jobRunner)
+        public ProgrammerImplementFeatureJob(GitService gitService, RepositoryQueryService repositoryQueryService, CodeAnalysisService codeAnalysisService, AssetDataStore assetDataStore, LanguageModelService languageModelService, VisualStudioService visualStudioService, IServiceProvider serviceProvider, JobRunner jobRunner, LoggerFactory loggerFactory)
         {
             _gitService = gitService;
             _repositoryQueryService = repositoryQueryService;
@@ -59,8 +59,9 @@ namespace BizDevAgent.Jobs
             _visualStudioService = visualStudioService;
             _serviceProvider = serviceProvider;
             _jobRunner = jobRunner;
+            _logger = loggerFactory.CreateLogger("Agent");
 
-            _languageModerParser = _languageModelService.CreateResponseParser();
+            _languageModelParser = _languageModelService.CreateResponseParser();
             _repositoryQuerySession = _repositoryQueryService.CreateSession(Paths.GetSourceControlRootPath());
             _goalPrompt = _assetDataStore.GetHardRef<PromptAsset>("Default_Goal");
             _doneGoal = _assetDataStore.GetHardRef<AgentGoal>("DoneGoal");
@@ -123,7 +124,7 @@ namespace BizDevAgent.Jobs
 
                 // Figure out which action it is taking.
                 var response = chatResult.ChatResult.Choices[0].Message.TextContent;
-                var processResult = await ProcessResponse(response, agentState);
+                var processResult = ProcessResponse(response, agentState);
 
                 // Transition to next step (push or pop)
                 Transition(agentState, processResult.ResponseTokens, generatePromptResult);
@@ -142,10 +143,14 @@ namespace BizDevAgent.Jobs
             var chosenGoal = FindChosenGoal(generatePromptResult, responseTokens);
             if (chosenGoal == _doneGoal)
             {
+                _logger.Log($"[{currentGoal.Title}]: popping goal");
+
                 agentState.Goals.Pop();
             }
             else
             {
+                _logger.Log($"[{currentGoal.Title}]: pushing goal [{chosenGoal.Title}]");
+
                 agentState.Goals.Push(chosenGoal);
             }
         }
@@ -154,10 +159,15 @@ namespace BizDevAgent.Jobs
         { 
             public List<string> ResponseTokens { get; set; }
         }
-        private async Task<ProcessResponseResult> ProcessResponse(string response, AgentState agentState)
+        private ProcessResponseResult ProcessResponse(string response, AgentState agentState)
         {
+            if (response.Contains("EvaluateResearch_Option"))
+            {
+                var x = 3;
+            }
+
             var result = new ProcessResponseResult();
-            var responseTokens = _languageModerParser.ExtractResponseTokens(response);
+            var responseTokens = _languageModelParser.ExtractResponseTokens(response);
             var currentGoal = agentState.Goals.Peek();
 
             bool hasResponseToken = responseTokens != null && responseTokens.Count == 1;
@@ -166,34 +176,10 @@ namespace BizDevAgent.Jobs
                 throw new InvalidOperationException($"Invalid response tokens: {string.Join(",", responseTokens)}");
             }
 
-            // TODO gsemple: fix this
-            if (response.Contains("EvaluateResearch_Option"))
-            {
-                var snippets = _languageModerParser.ExtractSnippets(response);
 
-                // Run the research job and gather output
-                var researchJobOutput = string.Empty;
-                foreach (var snippet in snippets)
-                {
-                    if (snippet.LanguageId == "csharp")
-                    {
-                        var researchClassName = $"{nameof(RepositoryQueryJob)}_{Guid.NewGuid().ToString("N")}";
-                        var researchClassSource = _codeAnalysisService.RenameClass(snippet.Contents, nameof(RepositoryQueryJob).ToString(), researchClassName);
-                        var researchAssembly = _visualStudioService.InjectCode(researchClassSource);
-                        foreach (var type in researchAssembly.GetTypes())
-                        {
-                            if (type.Name.Contains(researchClassName))
-                            {
-                                var researchJob = (Job)ActivatorUtilities.CreateInstance(_serviceProvider, type, LocalRepoPath);
-                                var researchJobResult = await _jobRunner.RunJob(researchJob);
-                                researchJobOutput += researchJobResult.OutputStdOut;
-                            }
-                        }
-                    }
-                }
+            _logger.Log($"[{currentGoal.Title}]: processing response {string.Join(", ", responseTokens)}");
 
-                agentState.Observations.Add(new AgentObservation() { Description = researchJobOutput });
-            }
+            currentGoal.ProcessResponse(response, agentState, _languageModelParser);
 
             result.ResponseTokens = responseTokens;
             return result;
@@ -245,6 +231,9 @@ namespace BizDevAgent.Jobs
         }
         private async Task<GeneratePromptResult> GeneratePrompt(AgentState agentState)
         {
+            var currentGoal = agentState.Goals.Peek();
+            _logger.Log($"[{currentGoal.Title}]: generating prompt");
+
             // Fill-in prompt context from current agent state
             var promptContext = new AgentPromptContext();
             var repositoryQuerySessionApi = await GenerateRepositoryQueryApi();
@@ -257,7 +246,6 @@ namespace BizDevAgent.Jobs
             promptContext.FeatureSpecification = FeatureSpecification;
 
             // Construct a special "done" goal.
-            var currentGoal = agentState.Goals.Peek();
             if (!currentGoal.AutoComplete)
             {
                 promptContext.OptionalSubgoals.Add(_doneGoal);
@@ -309,17 +297,17 @@ namespace BizDevAgent.Jobs
             var buildResult = await BuildAgent.Build(LocalRepoPath);
             if (buildResult.IsFailed)
             {
-                Console.WriteLine("ERRORS:");
+                _logger.Log("ERRORS:");
                 foreach (var error in buildResult.Errors)
                 {
                     if (error is BuildError buildError)
                     {
-                        Console.WriteLine(buildError.RawMessage);
+                        _logger.Log(buildError.RawMessage);
                     }
                 }
-                Console.WriteLine();
+                _logger.Log();
 
-                Console.WriteLine("SOURCE:");
+                _logger.Log("SOURCE:");
                 foreach (var error in buildResult.Errors)
                 {
                     if (error is BuildError buildError)
@@ -327,7 +315,7 @@ namespace BizDevAgent.Jobs
                         await repositoryQuerySession.PrintFileContentsAroundLine(buildError.FilePath, buildError.LineNumber, 5); // Example: 5 lines around each error
                     }
                 }
-                Console.WriteLine();
+                _logger.Log();
             }
 
             return buildResult;

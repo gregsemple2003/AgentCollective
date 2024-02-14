@@ -12,12 +12,14 @@
         {
           "TypeId": "AgentGoal",
           "Title": "Research Implementation",
+          "Customization": { "TypeId": "ResearchImplementationCustomization" },
           "OptionDescription": { "Template": "ResearchImplementation_Option" },
           "StackDescription": { "Template": "ResearchImplementation_Stack" },
           "DoneDescription": { "Template": "ResearchImplementation_Done" },
           "OptionalSubgoals": [
             {
               "TypeId": "AgentGoal",
+              "Customization": { "TypeId": "EvaluateResearchCustomization" },
               "Title": "Evaluate Research",
               "AutoComplete": true,
               "OptionDescription": { "Template": "EvaluateResearch_Option" },
