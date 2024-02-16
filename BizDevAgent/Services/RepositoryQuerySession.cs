@@ -81,7 +81,8 @@ namespace BizDevAgent.Services
 
             await GetAllRepoFiles();
 
-            var regexPattern = "^" + Regex.Escape(fileMatchingPattern).Replace("\\*", ".*").Replace("\\?", ".") + "$";
+            // TODO gsemple: this will cause problems for files with the same name, we can check for conflicts later
+            var regexPattern = Regex.Escape(fileMatchingPattern).Replace("\\*", ".*").Replace("\\?", ".");
             var regex = new Regex(regexPattern, RegexOptions.IgnoreCase);
 
             string wordPattern = matchWholeWord ? $"\\b{text}\\b" : Regex.Escape(text);

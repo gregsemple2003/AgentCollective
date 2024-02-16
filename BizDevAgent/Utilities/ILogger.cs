@@ -19,6 +19,10 @@ namespace BizDevAgent.Utilities
     public interface ILogger
     {
         void Log(string message = "", LogLevel level = LogLevel.Info);
+        void Info(string message) { Log(message, LogLevel.Info); }
+        void Warning(string message) { Log(message, LogLevel.Warning); }
+        void Error(string message) { Log(message, LogLevel.Error); }
+
     }
 
 }

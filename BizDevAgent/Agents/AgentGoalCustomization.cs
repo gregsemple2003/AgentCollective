@@ -12,7 +12,12 @@ namespace BizDevAgent.Agents
     [TypeId("AgentGoalCustomization")]
     public class AgentGoalCustomization : JsonAsset
     {
-        public virtual Task ProcessResponse(string response, AgentState agentState, IResponseParser languageModelParser)
+        public virtual bool ShouldRequestCompletion() 
+        { 
+            return false; 
+        }
+
+        public virtual Task ProcessResponse(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
         {
             return Task.CompletedTask;
         }

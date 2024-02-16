@@ -104,11 +104,6 @@ namespace BizDevAgent.Services
                 var path = GetFullPath();
                 Console.WriteLine($"Summarizing directory: {path}");
 
-                if (path.Contains("Agents"))
-                {
-                    var x = 3;
-                }
-
                 var promptBuilder = new StringBuilder();
                 promptBuilder.AppendLine($"Summarize this directory '{path}' in 1-3 sentences (60 words max):\n\n");
                 foreach (var child in Children)

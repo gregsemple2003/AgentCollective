@@ -10,8 +10,8 @@ namespace BizDevAgent.Flow
     /// <summary>
     /// Process the response from the AI's research results.
     /// </summary>
-    [TypeId("ResearchImplementationCustomization")]
-    public class ResearchImplementationCustomization : AgentGoalCustomization
+    [TypeId("RequestResearchJobCustomization")]
+    public class RequestResearchJobCustomization : AgentGoalCustomization
     {
         private readonly CodeAnalysisService _codeAnalysisService;
         private readonly VisualStudioService _visualStudioService;
@@ -19,7 +19,7 @@ namespace BizDevAgent.Flow
         private readonly IServiceProvider _serviceProvider;
         private readonly RepositoryQuerySession _repositoryQuerySession;
 
-        public ResearchImplementationCustomization(CodeAnalysisService codeAnalysisService, VisualStudioService visualStudioService, JobRunner jobRunner, IServiceProvider serviceProvider)
+        public RequestResearchJobCustomization(CodeAnalysisService codeAnalysisService, VisualStudioService visualStudioService, JobRunner jobRunner, IServiceProvider serviceProvider)
         { 
             _codeAnalysisService = codeAnalysisService;
             _visualStudioService = visualStudioService;
@@ -28,13 +28,13 @@ namespace BizDevAgent.Flow
             _repositoryQuerySession = GoalTreeContext.Current.RepositoryQuerySession;
         }
 
-        public override async Task ProcessResponse(string response, AgentState agentState, IResponseParser languageModelParser)
+        public override bool ShouldRequestCompletion()
         {
-            if (response.Contains("EvaluateResearch_Option"))
-            {
-                var x = 3;
-            }
+            return true;
+        }
 
+        public override async Task ProcessResponse(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
+        {
             var snippets = languageModelParser.ExtractSnippets(response);
 
             // Run the research job and gather output
@@ -58,7 +58,10 @@ namespace BizDevAgent.Flow
                 }
             }
 
-            agentState.Observations.Add(new AgentObservation() { Description = researchJobOutput });
+            if (!string.IsNullOrWhiteSpace(researchJobOutput))
+            {
+                agentState.Observations.Add(new AgentObservation() { Description = researchJobOutput });
+            }
         }
     }
 }

@@ -35,6 +35,29 @@ namespace BizDevAgent.Agents
     }
 
     /// <summary>
+    /// Holds non-static data about a goal.  This is embedded in the AgentGoal to keep the graph instantiation
+    /// logic simple.  If we ever need non-static subgoals, we might consider revising this approach.
+    /// </summary>
+    internal class AgentGoalState
+    { 
+        /// <summary>
+        /// Whether this goal is complete, and can be popped off the goal stack.
+        /// </summary>
+        public bool IsDone { get; set; }
+
+        /// <summary>
+        /// How many times we have requested a completion from this state, not including children.
+        /// </summary>
+        public int CompletionCount { get; set; }
+
+        public void Reset()
+        {
+            IsDone = false;
+            CompletionCount = 0;
+        }
+    }
+
+    /// <summary>
     /// Represents a task in the goal hierarchy of an agent.  Helps to define agent state and behavior in natural language:
     ///     - The subgoals of this goal, some or all of which can be chosen to complete this goal.
     ///     - The goal stack, which is a top-down series of descriptions about the task the agent is currently focused on.
@@ -51,7 +74,10 @@ namespace BizDevAgent.Agents
         /// <summary>
         /// After executing this state's prompt and response logic, pop it return control to parent goal.
         /// </summary>
-        public bool AutoComplete {  get; set; }
+        public bool IsAutoComplete 
+        {
+            get => OptionalSubgoals.Count == 0;
+        }
 
         /// <summary>
         /// Subgoals which must be compled in order for the parent to be complete.
@@ -81,27 +107,78 @@ namespace BizDevAgent.Agents
 
         public AgentGoalCustomization Customization { get; set; }
 
+        private readonly AgentGoalState _state;
+
         public string TokenPrefix => "@";
-
-        public bool RequiresDoneDescription()
-        {
-            if (AutoComplete) return false;
-
-            return true;
-        }
-
-        public void ProcessResponse(string response, AgentState agentState, IResponseParser languageModelParser)
-        {
-            Customization?.ProcessResponse(response, agentState, languageModelParser);
-        }
+        public int CompletionsLimit => 3;
 
         public AgentGoal()
         {
+            _state = new AgentGoalState();
         }
 
         public AgentGoal(string title)
         {
             Title = title;
+        }
+
+        /// <summary>
+        /// Whether this state is considered complete.
+        /// </summary>
+        /// <returns></returns>
+        public bool IsDone()
+        {
+            return _state.IsDone;
+        }
+
+        public void MarkDone()
+        {
+            if (!_state.IsDone)
+            {
+                _state.IsDone = true;
+            }
+        }
+
+        public void Reset()
+        {
+            _state.Reset();
+        }
+
+        public void IncrementCompletionCount(int delta)
+        {
+            _state.CompletionCount += delta;
+
+            if (_state.CompletionCount >= CompletionsLimit)
+            {
+                _state.IsDone = true;
+            }
+        }
+
+        /// <summary>
+        /// Whether this goal needs a completion, which is a "brain tick" from the LLM.
+        /// </summary>
+        /// <returns></returns>
+        public bool ShouldRequestCompletion()
+        {
+            if (_state.CompletionCount >= CompletionsLimit) return false;
+
+            bool customizationWantsCompletion = Customization != null && Customization.ShouldRequestCompletion();
+            return customizationWantsCompletion || OptionalSubgoals.Count > 0;
+        }
+
+        public bool RequiresDoneDescription()
+        {
+            if (IsAutoComplete) return false;
+
+            return true;
+        }
+
+        public async Task ProcessResponse(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
+        {
+            if (Customization != null)
+            {
+                await Customization.ProcessResponse(prompt, response, agentState, languageModelParser);
+            }
         }
     }
 }

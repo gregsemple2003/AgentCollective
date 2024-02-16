@@ -97,6 +97,8 @@ class Program
         }
         var jobs = await jobDataStore.LoadAll();
 
+        var ws = new System.Net.WebSockets.ClientWebSocket();
+
         // Run jobs until we're told to exit
         //await jobRunner.RunJob(new UpdateRepositorySummaryJob(repositorySummaryDataStore, codeAnalysisService, repositoryQueryService, languageModelService, @"c:\Features\BizDevAgent_convertxml"));
 
@@ -104,7 +106,8 @@ class Program
         {
             GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
             LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",
-            FeatureSpecification = @"Convert any data load or saving functionality from JSON to XML.",
+            //FeatureSpecification = @"Convert any data load or saving functionality from JSON to XML.",
+            FeatureSpecification = @"Convert console logging to use the Logger class.",
             BuildAgent = new BatchFileBuildCommand
             {
                 ScriptPath = "Build.bat"

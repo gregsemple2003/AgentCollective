@@ -1,29 +1,30 @@
 {
   "TypeId": "AgentGoal",
   "Title": "Implement Feature",
+  "AutoComplete": true,
   "StackDescription": { "Text": "You are being tasked with the job to implement a feature in C# by modifying an existing repository." },
   "RequiredSubgoals": [
     {
       "TypeId": "AgentGoal",
       "Title": "Refine Implementation Plan",
-      "StackDescription": { "Text": "Your goal is to create or refine an implementation plan, which are step-by-step instructions on exactly which classes or methods to modify and how.  You must ensure that the classes or methods being modified actually exist by researching the code first." },
+      "StackDescription": { "Text": "Your goal is to create or refine a list of coding tasks in order to meet the feature specification given below.  These coding tasks do not include research, investigation, testing, or documentation.  The coding tasks are step-by-step instructions on which classes or methods should be modified and how, without explicitly addressing why they are being modified.  You must ensure that the classes or methods included in the plan actually exist." },
       "DoneDescription": { "Template": "RefineImplementationPlan_Done" },
       "OptionalSubgoals": [
         {
           "TypeId": "AgentGoal",
-          "Title": "Research Implementation",
-          "Customization": { "TypeId": "ResearchImplementationCustomization" },
-          "OptionDescription": { "Template": "ResearchImplementation_Option" },
-          "StackDescription": { "Template": "ResearchImplementation_Stack" },
-          "DoneDescription": { "Template": "ResearchImplementation_Done" },
+          "Title": "Request Research Job",
+          "Customization": { "TypeId": "RequestResearchJobCustomization" },
+          "OptionDescription": { "Template": "RequestResearchJob_Option" },
+          "StackDescription": { "Template": "RequestResearchJob_Stack" },
+          "DoneDescription": { "Template": "RequestResearchJob_Done" },
           "OptionalSubgoals": [
             {
               "TypeId": "AgentGoal",
-              "Customization": { "TypeId": "EvaluateResearchCustomization" },
-              "Title": "Evaluate Research",
+              "Customization": { "TypeId": "SnythesizeResearchOutputCustomization" },
+              "Title": "Snythesize Research Output",
               "AutoComplete": true,
-              "OptionDescription": { "Template": "EvaluateResearch_Option" },
-              "StackDescription": { "Template": "EvaluateResearch_Stack" }
+              "OptionDescription": { "Template": "SnythesizeResearchOutput_Option" },
+              "StackDescription": { "Template": "SnythesizeResearchOutput_Stack" }
             }
           ]
         },

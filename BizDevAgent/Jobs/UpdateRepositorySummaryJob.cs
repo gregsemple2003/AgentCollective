@@ -14,7 +14,6 @@ namespace BizDevAgent.Jobs
         private readonly CodeAnalysisService _codeAnalysisService;
         private readonly RepositoryQuerySession _repositoryQuerySession;
         private readonly LanguageModelService _languageAgent;
-        private readonly GitService _gitService;
 
         private const int RequiredSummaryVerison = 1;
 
@@ -40,9 +39,9 @@ namespace BizDevAgent.Jobs
             await repositorySummaryProvider.Refresh();
 
             //_repositoryQuerySession.PrintRepositoryPathSummary("");
-            _repositoryQuerySession.PrintRepositoryPathSummary("BizDevAgent/Agents");
-            _repositoryQuerySession.PrintRepositoryPathSummary("BizDevAgent/DataStore/FileDataStore.cs");
-            _repositoryQuerySession.PrintRepositoryPathSummary("BizDevAgent/DataStore/FileDataStore.dfdfdfcs");
+            await _repositoryQuerySession.PrintRepositoryPathSummary("BizDevAgent/Agents");
+            await _repositoryQuerySession.PrintRepositoryPathSummary("BizDevAgent/DataStore/FileDataStore.cs");
+            await _repositoryQuerySession.PrintRepositoryPathSummary("BizDevAgent/DataStore/FileDataStore.dfdfdfcs");
         }
     }
 }

@@ -2,28 +2,11 @@
 using BizDevAgent.DataStore;
 using BizDevAgent.Agents;
 using BizDevAgent.Utilities;
-using BizDevAgent.Utilities.Commands;
 using FluentResults;
-using System.Text.RegularExpressions;
-using AngleSharp.Dom;
-using Microsoft.Extensions.DependencyInjection;
-using System;
-using Newtonsoft.Json;
-using Rystem.OpenAi;
-using static BizDevAgent.Jobs.ProgrammerImplementFeatureJob;
+using BizDevAgent.Flow;
 
 namespace BizDevAgent.Jobs
 {
-    public class ImplementationStep
-    { 
-        public int Step { get; set; }
-        public string Description { get; set; }
-    }
-    public class ImplementationPlan
-    {
-        public List<ImplementationStep> Steps { get; set; }
-    }
-
     public class GoalTreeContext
     {
         public RepositoryQuerySession RepositoryQuerySession { get; set; }
@@ -115,22 +98,25 @@ namespace BizDevAgent.Jobs
             var goalTree = CreateGoalTree();
 
             // Initialize agent
-            var implementationPlan = new ImplementationPlan
-            {
-                Steps = new List<ImplementationStep> 
-                { 
-                    new ImplementationStep { Step = 1, Description = "Example step, feel free to modify." }
+            var agentState = new ProgrammerAgentState()
+            { 
+                ShortTermMemory = new ProgrammerShortTermMemory()
+                {
+                    CodingTasks = new CodingTasks()
+                    {
+                        Steps = new List<ImplementationStep>
+                        { 
+                            new ImplementationStep { Step = 1, Description = "Example step, feel free to modify." }
+                        }
+                    }
                 }
             };
-            var implementationPlanJson = JsonConvert.SerializeObject(implementationPlan);
-            var agentState = new AgentState();
-            agentState.Variables.Add(new AgentVariable { Name = "ImplementationPlan", Value = implementationPlanJson });
-            agentState.Variables.Add(new AgentVariable { Name = "Conclusions", Value = "{}" });
             agentState.Goals.Push(goalTree);
-            agentState.Goals.Push(goalTree.RequiredSubgoals[0]);
 
             // Run the machine on the goal hierarchy until done
             await StateMachineLoop(agentState);
+
+            _logger.Log($"Agent execution complete.");
 
             //// Build and report errors
             //var repositoryQuerySession = _repositoryQueryService.CreateSession(LocalRepoPath);
@@ -141,49 +127,127 @@ namespace BizDevAgent.Jobs
             //}
         }
 
+        public struct TransitionInfo
+        {
+            /// <summary>
+            /// The set of possible transitions within the prompt context.
+            /// </summary>
+            public AgentPromptContext PromptContext { get; set; }
+
+            /// <summary>
+            /// The transition choice by the agent.
+            /// </summary>
+            public List<string> ResponseTokens {  get; set; }
+        }
+
         private async Task StateMachineLoop(AgentState agentState)
         {
             while(agentState.Goals.Count > 0) 
             {
-                // Get language model to respond to goal prompt
-                var generatePromptResult = await GeneratePrompt(agentState);
-                var chatResult = await _languageModelService.ChatCompletion(generatePromptResult.Prompt);
-                if (chatResult.ChatResult.Choices.Count == 0)
+                // Get language model to select an option
+                var currentGoal = agentState.Goals.Peek();
+                if (currentGoal.IsDone())
                 {
-                    throw new InvalidOperationException("The chat API call failed to return a choice.");
+                    agentState.Goals.Pop();
+                    if (agentState.Goals.Count == 0)
+                    {
+                        return;
+                    }
+                    currentGoal = agentState.Goals.Peek();
                 }
-                agentState.Observations.Clear();
 
-                // Figure out which action it is taking.
-                var response = chatResult.ChatResult.Choices[0].Message.TextContent;
-                var processResult = ProcessResponse(response, agentState);
+                var transitionInfo = new TransitionInfo();
+                if (currentGoal.ShouldRequestCompletion())
+                {
+                    currentGoal.IncrementCompletionCount(1);
+
+                    var generatePromptResult = await GeneratePrompt(agentState);
+                    var chatResult = await _languageModelService.ChatCompletion(generatePromptResult.Prompt);
+                    if (chatResult.ChatResult.Choices.Count == 0)
+                    {
+                        throw new InvalidOperationException("The chat API call failed to return a choice.");
+                    }
+
+                    // Sensory memory is cleared prior to generating more observations in the response step.
+                    // Anything important must be synthesized to short-term memory.
+                    agentState.Observations.Clear();
+
+                    // Figure out which action it is taking.
+                    var response = chatResult.ChatResult.Choices[0].Message.TextContent;
+                    var processResult = await ProcessResponse(generatePromptResult.Prompt, response, agentState);
+
+                    transitionInfo.ResponseTokens = processResult.ResponseTokens;
+                    transitionInfo.PromptContext = generatePromptResult.PromptContext;
+                }
 
                 // Transition to next step (push or pop)
-                Transition(agentState, processResult.ResponseTokens, generatePromptResult);
+                Transition(agentState, transitionInfo);
             }
         }
 
-        private void Transition(AgentState agentState, List<string> responseTokens, GeneratePromptResult generatePromptResult)
+        private void Transition(AgentState agentState, TransitionInfo transitionInfo)
         {
+            // If you push a state, you must Reset it because you could be revisiting the same state.
+            // If you pop a state, you must keep popping done nodes because parents are complete
+            // when either the agent choses to be done, or there are no choices for the agent to make.
+
+            // Required subgoals must be completed prior to optional subgoals
             var currentGoal = agentState.Goals.Peek();
-            if (currentGoal.AutoComplete)
+            if (currentGoal.RequiredSubgoals.Count > 0 && !currentGoal.IsDone())
             {
-                agentState.Goals.Pop();
-                return;
+                for (int i = currentGoal.RequiredSubgoals.Count - 1; i >= 0; i--)
+                {
+                    AgentGoal requiredSubgoal = currentGoal.RequiredSubgoals[i];
+
+                    var isGoalOnStack = agentState.Goals.Any(g => g == requiredSubgoal);
+                    if (isGoalOnStack)
+                    {
+                        throw new InvalidOperationException($"Cannot push goal '{requiredSubgoal.Title}' onto the stack when it's already on the stack.  Possible infinite recursion.");
+                    }
+
+                    requiredSubgoal.Reset();
+                    agentState.Goals.Push(requiredSubgoal);
+                }
             }
 
-            var chosenGoal = FindChosenGoal(generatePromptResult, responseTokens);
-            if (chosenGoal == _doneGoal)
+            // Complete any optional subgoals
+            if (currentGoal.OptionalSubgoals.Count > 0 && !currentGoal.IsDone())
             {
-                _logger.Log($"[{currentGoal.Title}]: popping goal");
+                // Find the new goal, as selected by the agent (LLM)
+                var chosenGoal = FindChosenGoal(transitionInfo.PromptContext, transitionInfo.ResponseTokens);
+                if (chosenGoal == _doneGoal)
+                {
+                    _logger.Log($"[{currentGoal.Title}]: popping goal");
 
-                agentState.Goals.Pop();
+                    currentGoal.MarkDone();
+                    agentState.Goals.Pop();
+
+                    // Pop other goals that were previously completed
+                    while (agentState.Goals.Count > 0)
+                    {
+                        var goal = agentState.Goals.Peek();
+                        if (goal.IsDone())
+                        {
+                            agentState.Goals.Pop();
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.Log($"[{currentGoal.Title}]: pushing goal [{chosenGoal.Title}]");
+
+                    chosenGoal.Reset();
+                    agentState.Goals.Push(chosenGoal);
+                }
             }
             else
             {
-                _logger.Log($"[{currentGoal.Title}]: pushing goal [{chosenGoal.Title}]");
-
-                agentState.Goals.Push(chosenGoal);
+                // Goals with no options are automatically complete
+                currentGoal.MarkDone();
             }
         }
 
@@ -191,14 +255,14 @@ namespace BizDevAgent.Jobs
         { 
             public List<string> ResponseTokens { get; set; }
         }
-        private ProcessResponseResult ProcessResponse(string response, AgentState agentState)
+        private async Task<ProcessResponseResult> ProcessResponse(string prompt, string response, AgentState agentState)
         {
             var result = new ProcessResponseResult();
             var responseTokens = _languageModelParser.ExtractResponseTokens(response);
             var currentGoal = agentState.Goals.Peek();
 
             bool hasResponseToken = responseTokens != null && responseTokens.Count == 1;
-            if (!currentGoal.AutoComplete && !hasResponseToken)
+            if (!currentGoal.IsAutoComplete && !hasResponseToken)
             {
                 throw new InvalidOperationException($"Invalid response tokens: {string.Join(",", responseTokens)}");
             }
@@ -206,16 +270,16 @@ namespace BizDevAgent.Jobs
 
             _logger.Log($"[{currentGoal.Title}]: processing response {string.Join(", ", responseTokens)}");
 
-            currentGoal.ProcessResponse(response, agentState, _languageModelParser);
+            await currentGoal.ProcessResponse(prompt, response, agentState, _languageModelParser);
 
             result.ResponseTokens = responseTokens;
             return result;
         }
 
-        private AgentGoal FindChosenGoal(GeneratePromptResult generatePromptResult, List<string> responseTokens)
+        private AgentGoal FindChosenGoal(AgentPromptContext promptContext, List<string> responseTokens)
         {
             AgentGoal chosenGoal = null;
-            foreach (var possibleGoal in generatePromptResult.PromptContext.OptionalSubgoals)
+            foreach (var possibleGoal in promptContext.OptionalSubgoals)
             {
                 if (_goalPrompt == null)
                 {
@@ -267,13 +331,13 @@ namespace BizDevAgent.Jobs
             var repositoryQuerySample = await _repositoryQuerySession.FindFileInRepo("RepositoryQueryJob.cs");
             promptContext.AdditionalData["RepositoryQuerySessionApi"] = repositoryQuerySessionApi;
             promptContext.AdditionalData["RepositoryQuerySessionSample"] = repositoryQuerySample.Contents;            
-            promptContext.Variables = agentState.Variables;
+            promptContext.ShortTermMemoryJson = agentState.ShortTermMemory.ToJson();
             promptContext.Observations = agentState.Observations;
             promptContext.Goals = agentState.Goals.Reverse().ToList();
             promptContext.FeatureSpecification = FeatureSpecification;
 
             // Construct a special "done" goal.
-            if (!currentGoal.AutoComplete)
+            if (!currentGoal.IsAutoComplete)
             {
                 promptContext.OptionalSubgoals.Add(_doneGoal);
                 if (currentGoal.DoneDescription == null && currentGoal.RequiresDoneDescription())

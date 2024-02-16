@@ -11,24 +11,9 @@ FEATURE
 
 MEMORY
 
-Your long-term memory has the following state:
+Your short-term memory stores conclusions that you've already determined with a high-reliability to be true.  Currently, it has the following state:
 
-{{#each Variables}}
-{{{Name}}} = {{{Value}}}
-
-{{/each}}
-If you wish to modify the above, please output the new json as a snippet.
-
-{{#if ShouldDisplayObservations}}
-NEW OBSERVATIONS
-
-You have just observed the following things:
-
-{{#each Observations}}
-{{{Description}}}
-
-{{/each}}
-{{/if}}
+{{{ShortTermMemoryJson}}}
 
 {{#if ShouldDisplayActions}}
 ACTIONS
@@ -42,4 +27,15 @@ If you choose this action, include '{{TokenPrefix}}{{{OptionDescription.Key}}}' 
 
 {{/each}}
 {{/if}}
+{{#if ShouldDisplayObservations}}
+NEW OBSERVATIONS
 
+You have just observed the following things, which have not yet been incorporated into your short-term memory:
+
+{{#each Observations}}
+{{{Description}}}
+
+{{/each}}
+
+If you wish to change your short-term memory, please output a JSON snippet with the entire contents of the short-term memory in addition to your action selection with @ below.
+{{/if}}

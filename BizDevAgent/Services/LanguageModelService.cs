@@ -134,7 +134,7 @@ namespace BizDevAgent.Services
 
         public async Task<ChatConversationResult> ChatCompletion(string prompt, Conversation conversation = null, bool allowCaching = true, OpenAI_API.Models.Model modelOverride = null)
         {
-            var temperature = 0.0;
+            var temperature = 0.7;
             var model = modelOverride ?? _defaultModel;
             string cacheKey = $"{model.ModelID}_{temperature}_{prompt}";
 

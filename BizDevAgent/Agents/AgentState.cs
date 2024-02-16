@@ -1,27 +1,32 @@
-﻿namespace BizDevAgent.Agents
+﻿using Newtonsoft.Json.Linq;
+
+namespace BizDevAgent.Agents
 {
-    public class AgentState
+    public interface IAgentShortTermMemory
     {
-        /// <summary>
-        /// The current observation state of the agent in natural language form.  When the agent requests information via
-        /// our API, it is recorded here for future use in prompts.
-        /// </summary>
-        public List<AgentObservation> Observations { get; set; }
+        string ToJson();
+    }
 
-        /// <summary>
-        /// Our current planning state, which is changed according to responses from language models.
-        /// </summary>
-        public List<AgentVariable> Variables { get; set; }
-
+    public abstract class AgentState
+    {
         /// <summary>
         /// The current working stack of goals.
         /// </summary>
         public Stack<AgentGoal> Goals { get; set; }
 
+        /// <summary>
+        /// Information gained from raw sensory data, e.g. viewing logs, reading debugger output.
+        /// </summary>
+        public List<AgentObservation> Observations { get; set; }
+
+        /// <summary>
+        /// Our current planning state, which is specialized according to the task we are performing.
+        /// </summary>
+        public virtual IAgentShortTermMemory ShortTermMemory { get; set; }
+
         public AgentState() 
         { 
             Observations = new List<AgentObservation>();
-            Variables = new List<AgentVariable>();
             Goals = new Stack<AgentGoal>();
         }
     }
