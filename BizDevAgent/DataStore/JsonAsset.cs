@@ -15,10 +15,12 @@ namespace BizDevAgent.DataStore
     public class JsonAssetFactory : IAssetFactory
     {
         private readonly JsonSerializerSettings _settings;
+        private readonly TypedJsonConverter _converter;
 
-        public JsonAssetFactory(JsonSerializerSettings settings)
+        public JsonAssetFactory(JsonSerializerSettings settings, TypedJsonConverter converter)
         {
             _settings = settings;
+            _converter = converter;
         }
 
         public object Create(string filePath)

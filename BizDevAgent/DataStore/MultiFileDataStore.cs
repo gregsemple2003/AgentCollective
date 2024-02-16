@@ -43,7 +43,7 @@ namespace BizDevAgent.DataStore
                 }
             };
 
-            RegisterFactory(".json", new JsonAssetFactory(_settings));
+            RegisterFactory(".json", new JsonAssetFactory(_settings, _typedConverter));
         }
 
         public void RegisterFactory<TFactory>(string extension, TFactory factory) where TFactory : IAssetFactory
@@ -55,51 +55,66 @@ namespace BizDevAgent.DataStore
         { 
         }
 
-        public async Task<TEntity> Get(string key)
+        private int _getRecursionCount;
+
+        public TEntity Get(string key)
         {
             if (string.IsNullOrWhiteSpace(key))
                 throw new ArgumentException("Key cannot be null or whitespace.", nameof(key));
 
-            if (_cache.TryGetValue(key, out TEntity cachedEntity))
+            try
             {
-                return cachedEntity;
-            }
+                _getRecursionCount++;
 
-            // Build the file path cache if it hasn't been built yet
-            if (!_isCacheBuilt)
-            {
-                BuildFilePathCache();
-                _isCacheBuilt = true;
-            }
-
-            if (_filePathCache.TryGetValue(key, out string filePath))
-            {
-                var extension = Path.GetExtension(filePath).ToLower();
-                if (_factories.TryGetValue(extension, out IAssetFactory factory))
+                if (_cache.TryGetValue(key, out TEntity cachedEntity))
                 {
-                    // Create entity
-                    var entity = (TEntity)factory.Create(filePath);
-                    entity.Key = key;
-                    _cache[key] = entity;
+                    return cachedEntity;
+                }
 
-                    // Execute post loads in reverse load order, children first
+                // Build the file path cache if it hasn't been built yet
+                if (!_isCacheBuilt)
+                {
+                    BuildFilePathCache();
+                    _isCacheBuilt = true;
+                }
+
+                if (_filePathCache.TryGetValue(key, out string filePath))
+                {
+                    var extension = Path.GetExtension(filePath).ToLower();
+                    if (_factories.TryGetValue(extension, out IAssetFactory factory))
+                    {
+                        // Create entity
+                        var entity = (TEntity)factory.Create(filePath);
+                        entity.Key = key;
+                        _cache[key] = entity;
+
+                        return entity;
+                    }
+                }
+
+            }
+            finally
+            {
+                _getRecursionCount--;
+
+                // The last call to Get is responsible for dispatching PostLoads.
+                // Execute post loads in reverse load order, children first
+                if (_getRecursionCount == 0)
+                {
                     foreach (var loadedEntity in _typedConverter.PendingPostLoads)
                     {
                         PostLoad((TEntity)loadedEntity);
                     }
                     _typedConverter.PendingPostLoads.Clear();
-                    return entity;
                 }
             }
-
-            await Task.CompletedTask;
 
             return null; // File not found
         }
 
         public async Task<TChild> Get<TChild>(string key) where TChild : class
         {
-            var result = await Get(key);
+            var result = Get(key);
             var child = result as TChild;
             if (child == null && result != null)
             {

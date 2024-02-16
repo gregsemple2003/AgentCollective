@@ -374,7 +374,7 @@ namespace BizDevAgent.Jobs
         // TODO gsemple: remove, need to implement asset references in json
         private TAsset AssetRef<TAsset>(string assetName) where TAsset : Asset
         {
-            var asset = _assetDataStore.Get(assetName).GetAwaiter().GetResult();
+            var asset = _assetDataStore.Get(assetName);
             return (TAsset) asset;
         }
 

@@ -28,7 +28,7 @@ namespace BizDevAgent.DataStore
         public TAsset GetHardRef<TAsset>(string assetName)
             where TAsset : Asset
         {
-            return (TAsset)Get(assetName).GetAwaiter().GetResult();
+            return (TAsset)Get(assetName);
         }
 
         protected override void PostLoad(Asset asset)
