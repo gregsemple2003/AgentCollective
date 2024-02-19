@@ -93,6 +93,13 @@ namespace BizDevAgent.Services
 
     public class PublicApiRewriter : CSharpSyntaxRewriter
     {
+        private readonly List<string> _requiredMethodAttributes;
+
+        public PublicApiRewriter(List<string> requiredMethodAttributes)
+        {
+            _requiredMethodAttributes = requiredMethodAttributes;
+        }
+
         public override SyntaxNode VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
         {
             // Remove all constructors
@@ -145,27 +152,25 @@ namespace BizDevAgent.Services
 
         public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node)
         {
-            // Check if the method has the [HideFromSummary] attribute
-            bool hasAgentAttribute = node.AttributeLists.SelectMany(list => list.Attributes)
-                .Any(attr => attr.Name.ToString().EndsWith("AgentApi"));
+            bool hasRequiredAttribute = node.AttributeLists.SelectMany(list => list.Attributes)
+                .Any(attr => _requiredMethodAttributes.Any(requiredAttr => attr.Name.ToString().EndsWith(requiredAttr)));
 
-            if (!hasAgentAttribute)
+            if (!hasRequiredAttribute)
             {
                 return null;
             }
 
-            // Replace method body with a semicolon for public methods
             if (node.Modifiers.Any(SyntaxKind.PublicKeyword))
             {
                 var newNode = node
                     .WithBody(null)
                     .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken))
-                    .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed); // For readability
+                    .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed);
 
                 return base.VisitMethodDeclaration(newNode);
             }
 
-            return null; // Remove non-public methods
+            return null; // Remove non-public methods or methods without the required attributes
         }
 
         // Optionally, override other Visit* methods if needed.
@@ -238,10 +243,10 @@ namespace BizDevAgent.Services
         /// <summary>
         /// Given some source code, strip out the method bodies and anything else that seems extraneous to its use as a public API.
         /// </summary>
-        public string GeneratePublicApiSkeleton(string sourceCode)
+        public string GeneratePublicApiSkeleton(string sourceCode, List<string> requiredMethodAttributes)
         {
             var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
-            var rewriter = new PublicApiRewriter();
+            var rewriter = new PublicApiRewriter(requiredMethodAttributes);
             var newRoot = rewriter.Visit(syntaxTree.GetRoot());
 
             var newCode = newRoot.NormalizeWhitespace().ToFullString();

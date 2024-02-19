@@ -7,18 +7,20 @@ namespace BizDevAgent.Agents
     {
         public List<AgentGoal> Goals { get; set; }
         public List<AgentObservation> Observations { get; set; }
-        public List<AgentGoal> OptionalSubgoals { get; set; }
+        public List<AgentGoalSpec> OptionalSubgoals { get; set; }
         public string ShortTermMemoryJson { get; set; }
         public Dictionary<string, object> AdditionalData { get; set; }
         public string FeatureSpecification { get; set; } // TODO gsemple: should be additional data?
         public bool ShouldDisplayActions { get; set; }
         public bool ShouldDisplayObservations { get; set; }
+        public List<AgentReminder> Reminders { get; set; } // At the end of the prompt, ensuring higher likelihood that it won't get lost in large prompts.
 
         public AgentPromptContext() 
         { 
             Observations = new List<AgentObservation>();
-            OptionalSubgoals = new List<AgentGoal>();
+            OptionalSubgoals = new List<AgentGoalSpec>();
             AdditionalData = new Dictionary<string, object>();
+            Reminders = new List<AgentReminder>();
         }
     }
 

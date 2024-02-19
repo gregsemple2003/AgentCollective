@@ -1,0 +1,5 @@
+It is extremely important to format the changes you suggest in the following way:
+
+For any lines that have been deleted include all original lines with <DELETED> next to the line number of any removed lines. Each <DELETED> line should show its original line number.
+
+Remember, for lines you mark with <ADDED>, DO NOT put any line number "<num>:" prefix on the line.

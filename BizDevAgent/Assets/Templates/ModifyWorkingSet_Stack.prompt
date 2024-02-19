@@ -1,0 +1,13 @@
+We want to decide on our repository working set, which is the set of text lines from files in the repository that we believe we should edit in order to accomplish this coding task step.
+
+To do this, you'll write C# code to call the agent API.
+
+Try not to select more text lines than absolutely necessary for the task at hand, but to ensure that what you select is sufficient for the task.
+
+The agent API has a single class with public methods.  When the methods are called, they will log information that tells you about the contents of the repository that you are tasked with modifying.
+
+{{{AdditionalData.AgentApiSkeleton}}}
+
+To write C# code to call the agent API, you must use the following structure:
+
+{{{AdditionalData.AgentApiSample}}}

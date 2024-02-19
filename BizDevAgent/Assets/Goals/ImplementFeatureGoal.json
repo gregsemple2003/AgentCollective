@@ -38,7 +38,44 @@
     },
     {
       "TypeId": "AgentGoal",
-      "Title": "Modify Repository"
+      "Title": "Modify Repository",
+      "Customization": { "TypeId": "ModifyRepositoryCustomization" },
+      "OptionDescription": { "Template": "ModifyRepository_Option" },
+      "StackDescription": { "Template": "ModifyRepository_Stack" },
+      "DoneDescription": { "Template": "ModifyRepository_Done" },
+      "RequiredSubgoals": [
+        {
+          "TypeId": "AgentGoal",
+          "Key": "ModifyWorkingSet",
+          "Title": "Modify Working Set",
+          "CompletionMethod": "WhenMarkedDone",
+          "Customization": { "TypeId": "ModifyRepositoryCustomization" },
+          "OptionDescription": { "Template": "ModifyWorkingSet_Option" },
+          "StackDescription": { "Template": "ModifyWorkingSet_Stack" },
+          "DoneDescription": { "Template": "ModifyWorkingSet_Done" }
+        },
+        {
+          "TypeId": "AgentGoal",
+          "Key": "GetWorkingSetPatch",
+          "Title": "Get Working Set Patch",
+          "CompletionMethod": "WhenMarkedDone",
+          "Customization": { "TypeId": "ModifyRepositoryCustomization" },
+          "OptionDescription": { "Template": "GetWorkingSetPatch_Option" },
+          "StackDescription": { "Template": "GetWorkingSetPatch_Stack" },
+          "DoneDescription": { "Template": "GetWorkingSetPatch_Done" },
+          "ReminderDescription": { "Template": "GetWorkingSetPatch_Reminder" }
+        },
+        {
+          "TypeId": "AgentGoal",
+          "Key": "FixBuildErrors",
+          "Title": "Fix Build Errors",
+          "CompletionMethod": "WhenMarkedDone",
+          "Customization": { "TypeId": "ModifyRepositoryCustomization" },
+          "OptionDescription": { "Template": "FixBuildErrors_Option" },
+          "StackDescription": { "Template": "FixBuildErrors_Stack" },
+          "DoneDescription": { "Template": "FixBuildErrors_Done" },
+        }
+      ]
     },
     {
       "TypeId": "AgentGoal",
@@ -49,5 +86,4 @@
       "Title": "Write Unit Tests"
     }
   ]
-
 }

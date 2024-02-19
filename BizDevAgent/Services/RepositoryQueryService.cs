@@ -6,12 +6,25 @@ using System.Drawing.Printing;
 namespace BizDevAgent.Services
 {
     /// <summary>
-    /// Hides a method from being included in the public API generation of a class.
+    /// Defines a method as being part of the "agent api", which is exposed directly to LLMs for processing.
     /// </summary>
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
     public class AgentApiAttribute : Attribute
     {
         public AgentApiAttribute()
+        {
+        }
+    }
+
+    /// <summary>
+    /// Marks a method as being appropriate in the context of an LLM building its "working set" which 
+    /// is the subset of text in the repository that it should be aware of in order to accomplish a 
+    /// specific task.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
+    public class WorkingSetAttribute : Attribute
+    {
+        public WorkingSetAttribute()
         {
         }
     }

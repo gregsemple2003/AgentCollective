@@ -1,5 +1,9 @@
-﻿using BizDevAgent.Services;
+﻿using AngleSharp.Dom;
+using BizDevAgent.Services;
 using FluentResults;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Differencing;
 using System;
 using System.Collections.Generic;
@@ -8,8 +12,46 @@ using System.Text.RegularExpressions;
 
 namespace BizDevAgent.Utilities
 {
+    public class RepositoryFilePatch
+    {
+        public string FileName { get; set; }
+        public string Patch { get; set; }
+    }
+
     public class DiffUtils
     {
+        /// <summary>
+        /// Given a text response from an LLM containing file patches, parse them into a list of patches.
+        /// </summary>
+        /// <param name="input"></param>
+        /// <returns></returns>
+        public static List<RepositoryFilePatch> ParseCustomPatches(string input)
+        {
+            var patches = new List<RepositoryFilePatch>();
+            var patchBlocks = Regex.Split(input, @"@PATCHED\(");
+
+            foreach (var block in patchBlocks)
+            {
+                if (string.IsNullOrWhiteSpace(block))
+                    continue;
+
+                var endIndex = block.IndexOf(")");
+                if (endIndex > 0)
+                {
+                    var fileName = block.Substring(0, endIndex);
+                    var patchContent = block.Substring(endIndex + 1).Trim();
+
+                    patches.Add(new RepositoryFilePatch
+                    {
+                        FileName = fileName,
+                        Patch = patchContent
+                    });
+                }
+            }
+
+            return patches;
+        }
+
         /// <summary>
         /// As a fallback for when GPT isn't able to express the code changes as a valid .diff file, we revert
         /// to just prompting it for the chunk of code that changes and all line numbers.  This routine applies
@@ -68,6 +110,30 @@ namespace BizDevAgent.Utilities
 
             // Reconstruct the file contents
             return string.Join(Environment.NewLine, newFileLines);
+        }
+
+        // TODO gsemple: should format according to file specifier or fix gpt4's odd indentation
+        public static string FormatRepositoryFile(string fileContents)
+        {
+            // Parse the code into a syntax tree
+            var syntaxTree = CSharpSyntaxTree.ParseText(fileContents);
+
+            // Get the root node of the syntax tree
+            var root = syntaxTree.GetRoot();
+
+            // Create a workspace
+            var workspace = new AdhocWorkspace();
+
+            // Get the formatting rules for the workspace
+            var options = workspace.Options;
+
+            // Format the syntax tree
+            var formattedRoot = Formatter.Format(root, workspace, options);
+
+            // Convert the formatted syntax tree back to string
+            var formattedCode = formattedRoot.ToFullString();
+
+            return formattedCode;
         }
 
         /// <summary>

@@ -145,7 +145,7 @@ namespace BizDevAgent.Services
         internal async Task<RepositoryNode> BuildRepositoryTree()
         {
             var root = new RepositoryNode("", RepositoryNodeType.Directory); // Assume root is the base directory
-            var repositoryFiles = await _repositoryQuerySession.GetAllRepoFiles();
+            var repositoryFiles = _repositoryQuerySession.GetAllRepoFiles();
 
             foreach (var repoFile in repositoryFiles)
             {

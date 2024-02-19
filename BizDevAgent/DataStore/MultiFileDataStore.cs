@@ -14,6 +14,9 @@ namespace BizDevAgent.DataStore
         public string Key { get; set; }
     }
 
+    /// <summary>
+    /// Data store which stores each top-level entity in its own file, along with any embedded child entities.
+    /// </summary>
     public class MultiFileDataStore<TEntity> : IDataStore 
         where TEntity : DataStoreEntity
     {
@@ -34,6 +37,7 @@ namespace BizDevAgent.DataStore
             _typedConverter = new TypedJsonConverter(serviceProvider, this);
             _settings = settings ?? new JsonSerializerSettings
             {
+                Formatting = Formatting.Indented,
                 Converters = new List<JsonConverter> { _typedConverter },
                 ContractResolver = new Newtonsoft.Json.Serialization.DefaultContractResolver
                 {
@@ -121,6 +125,41 @@ namespace BizDevAgent.DataStore
                 throw new InvalidCastException($"Cannot convert type '{typeof(TEntity).Name}' to '{typeof(TChild).Name}'.");
             }
             return child;
+        }
+
+        public void Add(TEntity entity, bool shouldOverwrite = false)
+        {
+            if (entity == null)
+            {
+                throw new ArgumentNullException(nameof(entity));
+            }
+
+            // Normalize and validate the entity's key
+            var key = entity.Key?.Trim();
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new ArgumentException("The key for the entity cannot be null or whitespace.", nameof(entity));
+            }
+
+            // Generate the file path for the entity
+            var fileName = $"{key}.json";
+            var filePath = Path.Combine(_baseDirectory, fileName);
+
+            // Check if the entity file already exists
+            if (File.Exists(filePath) && !shouldOverwrite)
+            {
+                throw new InvalidOperationException($"An entity with the key '{key}' already exists.");
+            }
+
+            // Serialize the entity to JSON
+            var json = JsonConvert.SerializeObject(entity, _settings);
+
+            // Write the JSON to the file
+            File.WriteAllText(filePath, json);
+
+            // Update caches
+            _cache[key] = entity;
+            _filePathCache[key] = filePath;
         }
 
         private void BuildFilePathCache()

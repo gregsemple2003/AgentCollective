@@ -1,7 +1,7 @@
 GOAL  
 
 {{#each Goals}}
-{{{StackDescription.Text}}}
+{{{Spec.StackDescription.Text}}}
 
 {{/each}}
 
@@ -39,3 +39,7 @@ You have just observed the following things, which have not yet been incorporate
 
 If you wish to change your short-term memory, please output a JSON snippet with the entire contents of the short-term memory in addition to your action selection with @ below.
 {{/if}}
+{{#each Reminders}}
+{{{Description}}}
+
+{{/each}}

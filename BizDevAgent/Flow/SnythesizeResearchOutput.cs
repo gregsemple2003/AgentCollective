@@ -24,7 +24,7 @@ namespace BizDevAgent.Flow
             _jobRunner = jobRunner;
         }
 
-        public override bool ShouldRequestCompletion()
+        public override bool ShouldRequestCompletion(AgentState agentState)
         {
             return true;
         }

@@ -41,12 +41,12 @@ namespace BizDevAgent.Services
         }
 
         // Prints the full C# code contents of the specified file without any modifications
-        [AgentApi]
+        [AgentApi][WorkingSet]
         public async Task PrintFileContents(string fileName)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileContents)}(fileName = {fileName}):");
 
-            var repoFile = await FindFileInRepo(fileName);
+            var repoFile = FindFileInRepo(fileName);
             if (repoFile == null)
             {
                 return;
@@ -57,12 +57,12 @@ namespace BizDevAgent.Services
         }
 
         // Prints the file at the specified lineNumber with linesToInclude above the specified lineNumber, as well as linesToInclude below.
-        [AgentApi]
+        [AgentApi][WorkingSet]
         public async Task PrintFileContentsAroundLine(string fileName, int lineNumber, int linesToInclude)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileContents)}(fileName = {fileName}):");
 
-            var repoFile = await FindFileInRepo(fileName);
+            var repoFile = FindFileInRepo(fileName);
             if (repoFile == null)
             {
                 return;
@@ -79,7 +79,7 @@ namespace BizDevAgent.Services
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintMatchingSourceLines)}(fileMatchingPattern = {fileMatchingPattern}, text = {text}, caseSensitive = {caseSensitive}, matchWholeWord = {matchWholeWord}):");
 
-            await GetAllRepoFiles();
+            GetAllRepoFiles();
 
             // TODO gsemple: this will cause problems for files with the same name, we can check for conflicts later
             var regexPattern = Regex.Escape(fileMatchingPattern).Replace("\\*", ".*").Replace("\\?", ".");
@@ -113,12 +113,12 @@ namespace BizDevAgent.Services
             PrintEndOutputWithMessage();
         }
 
-        [AgentApi]
+        [AgentApi][WorkingSet]
         public async Task PrintFunctionSourceCode(string className, string functionName)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFunctionSourceCode)}(className = {className}, functionName = {functionName}):");
 
-            var repoFiles = await GetAllRepoFiles();
+            var repoFiles = GetAllRepoFiles();
             RepositoryFile targetFile = null;
 
             // Attempt to find the file containing the class
@@ -186,9 +186,9 @@ namespace BizDevAgent.Services
             return Task.CompletedTask;
         }
 
-        public async Task<RepositoryFile> FindFileInRepo(string fileName, bool logError = true)
+        public RepositoryFile FindFileInRepo(string fileName, bool logError = true)
         {
-            var repoFiles = await GetAllRepoFiles();
+            var repoFiles = GetAllRepoFiles();
             var repoFile = repoFiles.Find(x => Path.GetFileName(x.FileName) == Path.GetFileName(fileName));
             if (repoFile == null)
             {
@@ -236,7 +236,7 @@ namespace BizDevAgent.Services
 
         private async Task<RepositoryFile> GetCachedProjectFile(string fileName)
         {
-            var repositoryFiles = await GetAllRepoFiles();
+            var repositoryFiles = GetAllRepoFiles();
             foreach (var repositoryFile in repositoryFiles)
             {
                 if (repositoryFile.FileName.Contains(fileName))
@@ -248,13 +248,13 @@ namespace BizDevAgent.Services
             return null;
         }
 
-        public async Task<List<RepositoryFile>> GetAllRepoFiles()
+        public List<RepositoryFile> GetAllRepoFiles()
         {
             if (_repoFiles == null)
             {
                 _repoFiles = new List<RepositoryFile>();
 
-                var listResult = await _gitService.ListRepositoryFiles(LocalRepoPath);
+                var listResult = _gitService.ListRepositoryFiles(LocalRepoPath).GetAwaiter().GetResult();
                 if (listResult.IsFailed)
                 {
                     throw new InvalidOperationException("Could not list files in git repository.");

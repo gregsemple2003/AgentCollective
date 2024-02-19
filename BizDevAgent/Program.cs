@@ -108,7 +108,7 @@ class Program
             LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",
             //FeatureSpecification = @"Convert any data load or saving functionality from JSON to XML.",
             FeatureSpecification = @"Convert console logging to use the Logger class.",
-            BuildAgent = new BatchFileBuildCommand
+            BuildCommand = new BatchFileBuildCommand
             {
                 ScriptPath = "Build.bat"
             }

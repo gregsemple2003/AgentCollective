@@ -1,6 +1,6 @@
 ﻿namespace BizDevAgent.DataStore
 {
-    [AttributeUsage(AttributeTargets.Class, Inherited = false)]
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Interface, Inherited = false)]
     public class TypeIdAttribute : Attribute
     {
         public string Id { get; private set; }

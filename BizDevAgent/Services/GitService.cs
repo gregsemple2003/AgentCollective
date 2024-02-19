@@ -68,6 +68,25 @@ namespace BizDevAgent.Services
             return Result.Ok(files);
         }
 
+        public async Task<Result<string>> RevertAllChanges(string localRepoPath)
+        {
+            // First, reset the repository to the last commit's state for tracked files
+            var resetResult = await ExecuteGitCommand(@"git reset --hard", localRepoPath);
+            if (resetResult.IsFailed)
+            {
+                return Result.Fail<string>(resetResult.Errors[0].Message);
+            }
+
+            // Then, clean the working directory to remove untracked files and directories
+            var cleanResult = await ExecuteGitCommand(@"git clean -fd", localRepoPath);
+            if (cleanResult.IsFailed)
+            {
+                return Result.Fail<string>(cleanResult.Errors[0].Message);
+            }
+
+            return Result.Ok("All local changes have been reverted successfully.");
+        }
+
         public async Task<Result<string>> CloneRepository(string gitRepoUrl, string localRepoPath)
         {
             Paths.EnsureDirectoryExists(localRepoPath);

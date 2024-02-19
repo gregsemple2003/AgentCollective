@@ -108,7 +108,8 @@ namespace BizDevAgent.Utilities
                 if (process.ExitCode != 0)
                 {
                     var errors = MsBuildErrorParser.ParseErrors(outputBuilder.ToString());
-                    var errorResult = Result.Fail<BuildResult>($"Build script failed with exit code {process.ExitCode}.");
+                    var errorResult = Result.Fail<BuildResult>(outputBuilder.ToString());
+                    errorResult.WithError($"Build script failed with exit code {process.ExitCode}.");
                     errors.ForEach(error => errorResult.WithError(error));
                     return errorResult;
                 }

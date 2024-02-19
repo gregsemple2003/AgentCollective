@@ -1,5 +1,7 @@
 ﻿using BizDevAgent.DataStore;
 using BizDevAgent.Services;
+using Microsoft.Identity.Client;
+using Rystem.OpenAi;
 
 namespace BizDevAgent.Agents
 {
@@ -38,23 +40,116 @@ namespace BizDevAgent.Agents
     /// Holds non-static data about a goal.  This is embedded in the AgentGoal to keep the graph instantiation
     /// logic simple.  If we ever need non-static subgoals, we might consider revising this approach.
     /// </summary>
-    internal class AgentGoalState
+    public class AgentGoal
     { 
-        /// <summary>
-        /// Whether this goal is complete, and can be popped off the goal stack.
-        /// </summary>
-        public bool IsDone { get; set; }
-
         /// <summary>
         /// How many times we have requested a completion from this state, not including children.
         /// </summary>
-        public int CompletionCount { get; set; }
+        public int CompletionCount { get; private set; }
 
-        public void Reset()
+        public AgentGoalSpec Spec {  get; }
+        public List<AgentGoal> Children { get; private set; }
+
+        internal bool _done;
+        internal AgentGoal _parent;
+
+        public AgentGoal(AgentGoalSpec spec)
         {
-            IsDone = false;
-            CompletionCount = 0;
+            Children = new List<AgentGoal>();
+
+            Spec = spec;
         }
+
+        /// <summary>
+        /// Whether this state is considered complete.
+        /// </summary>
+        /// <returns></returns>
+        public bool IsDone()
+        {
+            return _done;
+        }
+
+        public bool HasAnyChildren(Func<AgentGoal, bool> predicate)
+        {
+            foreach (var child in Children)
+            {
+                if (predicate(child))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public void MarkDone()
+        {
+            if (!_done)
+            {
+                _done = true;
+            }
+        }
+
+        public void SetParent(AgentGoal parent)
+        {
+            _parent = parent;
+        }
+
+        /// <summary>
+        /// Whether this goal needs a completion, which is a prompt and response from the LLM.
+        /// </summary>
+        /// <returns></returns>
+        public bool ShouldRequestCompletion(AgentState agentState)
+        {
+            if (CompletionCount >= Spec.CompletionsLimit) return false;
+
+            bool customizationWantsCompletion = Spec.Customization != null && Spec.Customization.ShouldRequestCompletion(agentState);
+            return customizationWantsCompletion || Spec.OptionalSubgoals.Count > 0;
+        }
+
+        public void IncrementCompletionCount(int delta)
+        {
+            CompletionCount += delta;
+
+            if (CompletionCount >= Spec.CompletionsLimit)
+            {
+                MarkDone();
+            }
+        }
+
+        public async Task PreCompletion(AgentState agentState)
+        {
+            await Spec.Customization?.PreCompletion(agentState);
+        }
+
+        public void CustomizePrompt(AgentPromptContext promptContext, AgentState agentState)
+        {
+            Spec.Customization?.CustomizePrompt(promptContext, agentState);
+        }
+
+        public bool RequiresDoneDescription()
+        {
+            if (Spec.IsAutoComplete) return false;
+
+            return true;
+        }
+
+        public async Task ProcessResponse(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
+        {
+            if (Spec.Customization != null)
+            {
+                await Spec.Customization.ProcessResponse(prompt, response, agentState, languageModelParser);
+            }
+        }
+    }
+
+    /// <summary>
+    /// When the goal determines it is complete.
+    /// </summary>
+    public enum CompletionMethod
+    {
+        WhenChildrenComplete,     // Goal is done when all children are done.
+        WhenMarkedDone            // Goal is done when manually marked done.
     }
 
     /// <summary>
@@ -64,7 +159,7 @@ namespace BizDevAgent.Agents
     ///     - The completion conditions, which must be true before this goal can be popped from the stack.
     /// </summary>
     [TypeId("AgentGoal")]
-    public class AgentGoal : JsonAsset
+    public class AgentGoalSpec : JsonAsset
     {
         /// <summary>
         /// A short title describing what this goal is supposed to accomplish.
@@ -82,12 +177,12 @@ namespace BizDevAgent.Agents
         /// <summary>
         /// Subgoals which must be compled in order for the parent to be complete.
         /// </summary>
-        public List<AgentGoal> RequiredSubgoals { get; set; } = new List<AgentGoal>();
+        public List<AgentGoalSpec> RequiredSubgoals { get; set; } = new List<AgentGoalSpec>();
 
         /// <summary>
         /// Subgoals which are offered as an "action" choice in the prompt.  At least one must be selected.
         /// </summary>
-        public List<AgentGoal> OptionalSubgoals { get; set; } = new List<AgentGoal>();
+        public List<AgentGoalSpec> OptionalSubgoals { get; set; } = new List<AgentGoalSpec>();
 
         /// <summary>
         /// The text which will be displayed when this goal is listed as an optional subgoal.
@@ -101,84 +196,51 @@ namespace BizDevAgent.Agents
         public OverridableText StackDescription { get; set; }
 
         /// <summary>
+        /// Information added to the end of the prompt, since information at the beginning and end of the prompt is prioritized.
+        /// Text in the middle of the prompt may be ignored, due to multi-head attention not properly prioritizing it.
+        /// </summary>
+        public OverridableText ReminderDescription { get; set; }
+
+        /// <summary>
         /// A short description indicating when this goal is considered finished.
         /// </summary>
         public OverridableText DoneDescription { get; set; }
 
         public AgentGoalCustomization Customization { get; set; }
 
-        private readonly AgentGoalState _state;
+        public CompletionMethod CompletionMethod { get; set; }
 
         public string TokenPrefix => "@";
         public int CompletionsLimit => 3;
 
-        public AgentGoal()
+        public AgentGoalSpec()
         {
-            _state = new AgentGoalState();
+            CompletionMethod = CompletionMethod.WhenChildrenComplete;
         }
 
-        public AgentGoal(string title)
+        public AgentGoalSpec(string title)
         {
             Title = title;
         }
 
-        /// <summary>
-        /// Whether this state is considered complete.
-        /// </summary>
-        /// <returns></returns>
-        public bool IsDone()
+        public AgentGoal InstantiateGraph()
         {
-            return _state.IsDone;
+            var rootGoal = new AgentGoal(this);
+            InstantiateChildren(rootGoal, this);
+            return rootGoal;
         }
 
-        public void MarkDone()
+        private void InstantiateChildren(AgentGoal parentGoal, AgentGoalSpec spec)
         {
-            if (!_state.IsDone)
+            foreach (var childSpec in spec.RequiredSubgoals)
             {
-                _state.IsDone = true;
+                // Create a new AgentGoal from each child spec.
+                var childGoal = new AgentGoal(childSpec);
+                childGoal.SetParent(parentGoal);
+                parentGoal.Children.Add(childGoal);
+                InstantiateChildren(childGoal, childSpec);
             }
         }
 
-        public void Reset()
-        {
-            _state.Reset();
-        }
-
-        public void IncrementCompletionCount(int delta)
-        {
-            _state.CompletionCount += delta;
-
-            if (_state.CompletionCount >= CompletionsLimit)
-            {
-                _state.IsDone = true;
-            }
-        }
-
-        /// <summary>
-        /// Whether this goal needs a completion, which is a "brain tick" from the LLM.
-        /// </summary>
-        /// <returns></returns>
-        public bool ShouldRequestCompletion()
-        {
-            if (_state.CompletionCount >= CompletionsLimit) return false;
-
-            bool customizationWantsCompletion = Customization != null && Customization.ShouldRequestCompletion();
-            return customizationWantsCompletion || OptionalSubgoals.Count > 0;
-        }
-
-        public bool RequiresDoneDescription()
-        {
-            if (IsAutoComplete) return false;
-
-            return true;
-        }
-
-        public async Task ProcessResponse(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
-        {
-            if (Customization != null)
-            {
-                await Customization.ProcessResponse(prompt, response, agentState, languageModelParser);
-            }
-        }
     }
 }
