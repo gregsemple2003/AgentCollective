@@ -37,7 +37,7 @@ namespace BizDevAgent.Agents
                 while (goal != null)
                 {
                     yield return goal;
-                    goal = goal._parent;
+                    goal = goal.Parent;
                 }
             }
         }
@@ -67,20 +67,26 @@ namespace BizDevAgent.Agents
 
             if (_currentGoal == null || forceCurrent)
             {
-                _currentGoal = child;
+                SetCurrentGoal(child);
             }
         }
 
         public void SetCurrentGoal(AgentGoal goal)
-        {            
+        {
+            var lastGoal = _currentGoal;
             _currentGoal = goal;
+
+            if (lastGoal == _currentGoal.Parent || lastGoal == null)
+            {
+                _currentGoal.OnEnter();
+            }
         }
 
         public void NextGoal()
         {
             _currentGoal.MarkDone();
 
-            var parent = _currentGoal._parent;
+            var parent = _currentGoal.Parent;
             if (parent != null)
             {
                 // Find first child that isn't done on parent
@@ -89,13 +95,13 @@ namespace BizDevAgent.Agents
                 {
                     if (!child.IsDone())
                     {
-                        _currentGoal = child;
+                        SetCurrentGoal(child);
                         return;
                     }
                 }
 
                 // If we get here, then all children are done, return to parent
-                _currentGoal = parent;
+                SetCurrentGoal(parent);
             }
         }
 

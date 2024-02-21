@@ -50,6 +50,23 @@ namespace BizDevAgent.DataStore
             return string.Empty;
         }
 
+        public static Type GetType(string typeId)
+        {
+            if (!_isInitialized)
+            {
+                GatherAllClassesWithTypeId();
+
+                _isInitialized = true;
+            }
+
+            if (_typeIdToType.ContainsKey(typeId))
+            {
+                return _typeIdToType[typeId];
+            }
+
+            throw new InvalidOperationException($"Could not find type for type id '{typeId}'");
+        }
+
         public override bool CanConvert(Type type)
         {          
             var typeId = GetTypeId(type);

@@ -1,6 +1,8 @@
 ﻿using BizDevAgent.DataStore;
 using BizDevAgent.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Identity.Client;
+using PuppeteerSharp;
 using Rystem.OpenAi;
 
 namespace BizDevAgent.Agents
@@ -41,17 +43,17 @@ namespace BizDevAgent.Agents
     /// logic simple.  If we ever need non-static subgoals, we might consider revising this approach.
     /// </summary>
     public class AgentGoal
-    { 
+    {
         /// <summary>
         /// How many times we have requested a completion from this state, not including children.
         /// </summary>
         public int CompletionCount { get; private set; }
 
-        public AgentGoalSpec Spec {  get; }
+        public AgentGoalSpec Spec { get; }
         public List<AgentGoal> Children { get; private set; }
 
         internal bool _done;
-        internal AgentGoal _parent;
+        internal AgentGoal Parent { get; private set; }
 
         public AgentGoal(AgentGoalSpec spec)
         {
@@ -92,7 +94,7 @@ namespace BizDevAgent.Agents
 
         public void SetParent(AgentGoal parent)
         {
-            _parent = parent;
+            Parent = parent;
         }
 
         /// <summary>
@@ -104,6 +106,7 @@ namespace BizDevAgent.Agents
             if (CompletionCount >= Spec.CompletionsLimit) return false;
 
             bool customizationWantsCompletion = Spec.Customization != null && Spec.Customization.ShouldRequestCompletion(agentState);
+            customizationWantsCompletion |= ShouldRequestCompletionCustom(agentState);
             return customizationWantsCompletion || Spec.OptionalSubgoals.Count > 0;
         }
 
@@ -119,12 +122,16 @@ namespace BizDevAgent.Agents
 
         public async Task PreCompletion(AgentState agentState)
         {
-            await Spec.Customization?.PreCompletion(agentState);
+            if (Spec.Customization != null)
+            {
+                await Spec.Customization.PreCompletion(agentState);
+            }
         }
 
         public void CustomizePrompt(AgentPromptContext promptContext, AgentState agentState)
         {
             Spec.Customization?.CustomizePrompt(promptContext, agentState);
+            CustomizePromptCustom(promptContext, agentState);
         }
 
         public bool RequiresDoneDescription()
@@ -139,8 +146,15 @@ namespace BizDevAgent.Agents
             if (Spec.Customization != null)
             {
                 await Spec.Customization.ProcessResponse(prompt, response, agentState, languageModelParser);
+                await ProcessResponseCustom(prompt, response, agentState, languageModelParser);
             }
         }
+
+        protected virtual bool ShouldRequestCompletionCustom(AgentState agentState) { return false; }
+        protected virtual void CustomizePromptCustom(AgentPromptContext promptContext, AgentState agentState) { }
+        protected virtual Task ProcessResponseCustom(string prompt, string response, AgentState agentState, IResponseParser languageModelParser) { return Task.CompletedTask; }
+        internal virtual void OnEnter() { }
+        internal virtual async Task PreTransition(AgentState agentState) { }
     }
 
     /// <summary>
@@ -206,6 +220,12 @@ namespace BizDevAgent.Agents
         /// </summary>
         public OverridableText DoneDescription { get; set; }
 
+        /// <summary>
+        /// The type id to use if a subclass of AgentGoal is desired.
+        /// </summary>
+        public string InstanceTypeId {  get; set; }
+
+        // TODO gsemple: remove this and migrate to InstanceTypeId
         public AgentGoalCustomization Customization { get; set; }
 
         public CompletionMethod CompletionMethod { get; set; }
@@ -223,24 +243,35 @@ namespace BizDevAgent.Agents
             Title = title;
         }
 
-        public AgentGoal InstantiateGraph()
+        public AgentGoal InstantiateGraph(IServiceProvider serviceProvider)
         {
-            var rootGoal = new AgentGoal(this);
-            InstantiateChildren(rootGoal, this);
+            var rootGoal = InstantiateNode(serviceProvider);
+            InstantiateChildren(rootGoal, this, serviceProvider);
             return rootGoal;
         }
 
-        private void InstantiateChildren(AgentGoal parentGoal, AgentGoalSpec spec)
+        public AgentGoal InstantiateNode(IServiceProvider serviceProvider)
+        {
+            if (InstanceTypeId?.Length > 0)
+            {
+                var instanceType = TypedJsonConverter.GetType(InstanceTypeId);
+                var instance = (AgentGoal)ActivatorUtilities.CreateInstance(serviceProvider, instanceType, this);
+                return instance;
+            }
+
+            return new AgentGoal(this);
+        }
+
+        private void InstantiateChildren(AgentGoal parentGoal, AgentGoalSpec spec, IServiceProvider serviceProvider)
         {
             foreach (var childSpec in spec.RequiredSubgoals)
             {
                 // Create a new AgentGoal from each child spec.
-                var childGoal = new AgentGoal(childSpec);
+                var childGoal = childSpec.InstantiateNode(serviceProvider);
                 childGoal.SetParent(parentGoal);
                 parentGoal.Children.Add(childGoal);
-                InstantiateChildren(childGoal, childSpec);
+                InstantiateChildren(childGoal, childSpec, serviceProvider);
             }
         }
-
     }
 }

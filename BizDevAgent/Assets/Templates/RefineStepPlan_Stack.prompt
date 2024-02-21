@@ -1,0 +1,12 @@
+You have decided that the implementation step needs clarification.  Please provide a question you need to answer about the implementation in the following format @QUESTION(This is an example question?).
+
+Then answer by providing a source code snippet using the agent API, as described below:
+
+The agent API has a single class with public methods.  When the methods are called, they will log information that tells you about the contents of the repository that you are tasked with modifying.
+
+{{{AdditionalData.AgentApiSkeleton}}}
+
+To write C# code to call the agent API, you must use the following structure:
+
+{{{AdditionalData.AgentApiSample}}}
+

@@ -97,6 +97,37 @@ namespace BizDevAgent.Services
             var result = await ExecuteGitCommand(command, workingDirectory);
             return result;
         }
+        
+        public async Task<Result<string>> AddFile(string localRepoPath, string fileName, string fileContents)
+        {
+            try
+            {
+                string filePath = Path.Combine(localRepoPath, fileName);
+
+                // Ensure the directory exists
+                string directoryPath = Path.GetDirectoryName(filePath);
+                if (!Directory.Exists(directoryPath))
+                {
+                    Directory.CreateDirectory(directoryPath);
+                }
+
+                // Write the file contents
+                await File.WriteAllTextAsync(filePath, fileContents);
+
+                // Add the file to Git
+                var addResult = await ExecuteGitCommand($"git add \"{filePath}\"", localRepoPath);
+                if (addResult.IsFailed)
+                {
+                    return addResult;
+                }
+
+                return Result.Ok($"File {fileName} added successfully.");
+            }
+            catch (Exception ex)
+            {
+                return Result.Fail<string>($"Failed to add and commit file: {ex.Message}");
+            }
+        }
 
         private Task<Result<string>> ExecuteGitCommand(string command, string workingDirectory = null)
         {

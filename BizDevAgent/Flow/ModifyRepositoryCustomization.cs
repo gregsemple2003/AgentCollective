@@ -125,6 +125,12 @@ namespace BizDevAgent.Flow
                     }
                 }
 
+                var responseTokens = languageModelParser.ExtractResponseTokens(response);
+                if (snippets.Count == 0 && !responseTokens.Any(t => t.Contains("NoWorkingSet")))
+                {
+                    throw new Exception($"Invalid response, could not find snippet or token");
+                }
+
                 if (!string.IsNullOrWhiteSpace(researchJobOutput))
                 {
                     agentState.Observations.Add(new AgentObservation() { Description = researchJobOutput });
@@ -143,6 +149,16 @@ namespace BizDevAgent.Flow
                         var patchedFilePath = Path.Combine(localRepoPath, repoFile.FileName);
                         patchedFileContents = DiffUtils.FormatRepositoryFile(patchedFileContents);
                         File.WriteAllText(patchedFilePath, patchedFileContents);
+                    }
+                    else if (repoFile == null && repositoryFilePatch.IsNewFile)
+                    {
+                        var newFileContents = DiffUtils.NewFileCustomPatch(repositoryFilePatch.Patch);
+                        newFileContents = DiffUtils.FormatRepositoryFile(newFileContents);
+                        var addResult = await _targetRepositoryQuerySession.AddFileToRepo(repositoryFilePatch.FileName, newFileContents);
+                        if (addResult.IsFailed)
+                        {
+                            throw new Exception($"Failure to add file {addResult}");
+                        }
                     }
                 }
             }

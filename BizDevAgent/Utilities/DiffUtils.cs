@@ -16,6 +16,7 @@ namespace BizDevAgent.Utilities
     {
         public string FileName { get; set; }
         public string Patch { get; set; }
+        public bool IsNewFile {  get; set; }
     }
 
     public class DiffUtils
@@ -28,10 +29,15 @@ namespace BizDevAgent.Utilities
         public static List<RepositoryFilePatch> ParseCustomPatches(string input)
         {
             var patches = new List<RepositoryFilePatch>();
-            var patchBlocks = Regex.Split(input, @"@PATCHED\(");
 
-            foreach (var block in patchBlocks)
+            // Handle both PATCHED and ADDED blocks
+            var patchBlocks = Regex.Split(input, @"@(PATCHED|ADDED)\(");
+
+            for (int i = 1; i < patchBlocks.Length; i += 2)
             {
+                var patchType = patchBlocks[i];
+                var block = patchBlocks[i + 1];
+
                 if (string.IsNullOrWhiteSpace(block))
                     continue;
 
@@ -44,12 +50,39 @@ namespace BizDevAgent.Utilities
                     patches.Add(new RepositoryFilePatch
                     {
                         FileName = fileName,
-                        Patch = patchContent
+                        Patch = patchContent,
+                        IsNewFile = patchType.Equals("ADDED", StringComparison.OrdinalIgnoreCase)
                     });
                 }
             }
 
             return patches;
+        }
+
+        /// <summary>
+        /// Given a diff that indicates a new file should be added, return the contents of the new file.
+        /// </summary>
+        public static string NewFileCustomPatch(string patch)
+        {
+            // Split the patch into lines
+            var patchLines = patch.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+
+            // List to hold new lines or modifications, handling <ADDED> tags
+            var newFileLines = new List<string>();
+
+            foreach (var line in patchLines)
+            {
+                // Check if the line contains <ADDED>, indicating it's part of the new content to be added
+                if (line.Contains("<ADDED>"))
+                {
+                    // Remove all instances of <ADDED> from the line and add it to the new file lines
+                    var cleanedLine = Regex.Replace(line, @"\<ADDED\>", "").Trim();
+                    newFileLines.Add(cleanedLine);
+                }
+            }
+
+            // Reconstruct the new file contents without the <ADDED> markers
+            return string.Join(Environment.NewLine, newFileLines);
         }
 
         /// <summary>

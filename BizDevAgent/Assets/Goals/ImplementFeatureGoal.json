@@ -7,7 +7,7 @@
     {
       "TypeId": "AgentGoal",
       "Title": "Refine Implementation Plan",
-      "StackDescription": { "Text": "Your goal is to create or refine a list of coding tasks in order to meet the feature specification given below.  These coding tasks do not include research, investigation, testing, or documentation.  The coding tasks are step-by-step instructions on which classes or methods should be modified and how, without explicitly addressing why they are being modified.  You must ensure that the classes or methods included in the plan actually exist." },
+      "StackDescription": { "Template": "RefineImplementationPlan_Stack" },
       "DoneDescription": { "Template": "RefineImplementationPlan_Done" },
       "OptionalSubgoals": [
         {
@@ -39,11 +39,13 @@
     {
       "TypeId": "AgentGoal",
       "Title": "Modify Repository",
+      "InstanceTypeId": "ModifyRepositoryAgentGoal",
       "Customization": { "TypeId": "ModifyRepositoryCustomization" },
       "OptionDescription": { "Template": "ModifyRepository_Option" },
       "StackDescription": { "Template": "ModifyRepository_Stack" },
       "DoneDescription": { "Template": "ModifyRepository_Done" },
-      "RequiredSubgoals": [
+      "CompletionMethod": "WhenMarkedDone",
+      "RequiredSubgoals": [      
         {
           "TypeId": "AgentGoal",
           "Key": "ModifyWorkingSet",
@@ -74,6 +76,28 @@
           "OptionDescription": { "Template": "FixBuildErrors_Option" },
           "StackDescription": { "Template": "FixBuildErrors_Stack" },
           "DoneDescription": { "Template": "FixBuildErrors_Done" },
+          "OptionalSubgoals": [
+            {
+              "TypeId": "AgentGoal",
+              "Key": "GetWorkingSetPatchForBuildError",
+              "Title": "Get Working Set Patch For Build Error",
+              "CompletionMethod": "WhenMarkedDone",
+              "Customization": { "TypeId": "ModifyRepositoryCustomization" },
+              "OptionDescription": { "Template": "GetWorkingSetPatchForBuildError_Option" },
+              "StackDescription": { "Template": "GetWorkingSetPatchForBuildError_Stack" },
+              "DoneDescription": { "Template": "GetWorkingSetPatchForBuildError_Done" }
+            },
+            {
+              "TypeId": "AgentGoal",
+              "Key": "RefineFixPlan",
+              "Title": "Refine Fix Plan",
+              "CompletionMethod": "WhenMarkedDone",
+              "Customization": { "TypeId": "ModifyRepositoryCustomization" },
+              "OptionDescription": { "Template": "RefineFixPlan_Option" },
+              "StackDescription": { "Template": "RefineFixPlan_Stack" },
+              "DoneDescription": { "Template": "RefineFixPlan_Done" }
+            }
+          ]
         }
       ]
     },

@@ -3,6 +3,7 @@ using BizDevAgent.Utilities;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp;
 using System.Text.RegularExpressions;
+using FluentResults;
 
 namespace BizDevAgent.Services
 {
@@ -57,7 +58,7 @@ namespace BizDevAgent.Services
         }
 
         // Prints the file at the specified lineNumber with linesToInclude above the specified lineNumber, as well as linesToInclude below.
-        [AgentApi][WorkingSet]
+        [AgentApi]
         public async Task PrintFileContentsAroundLine(string fileName, int lineNumber, int linesToInclude)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileContents)}(fileName = {fileName}):");
@@ -113,7 +114,7 @@ namespace BizDevAgent.Services
             PrintEndOutputWithMessage();
         }
 
-        [AgentApi][WorkingSet]
+        [AgentApi]
         public async Task PrintFunctionSourceCode(string className, string functionName)
         {
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFunctionSourceCode)}(className = {className}, functionName = {functionName}):");
@@ -184,6 +185,30 @@ namespace BizDevAgent.Services
             }
 
             return Task.CompletedTask;
+        }
+
+        public async Task<Result<string>> AddFileToRepo(string fileName, string fileContents)
+        {
+            var result = await _gitService.AddFile(LocalRepoPath, fileName, fileContents);
+            if (result.IsFailed)
+            {
+                Console.WriteLine($"Failed to add file to repository: {result.Errors[0].Message}");
+                return result;
+            }
+
+            // Update the internal cache to include the new file
+            var newRepoFile = new RepositoryFile
+            {
+                FileName = Path.Combine(LocalRepoPath, fileName),
+                Contents = fileContents
+            };
+            _repoFiles.Add(newRepoFile);
+
+            // Update file lines cache
+            var lines = fileContents.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            _fileLinesCache[fileName] = lines;
+
+            return result;
         }
 
         public RepositoryFile FindFileInRepo(string fileName, bool logError = true)

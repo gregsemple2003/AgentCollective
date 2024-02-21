@@ -85,7 +85,7 @@ namespace BizDevAgent.Jobs
                 var goalTreeSpec = _assetDataStore.GetHardRef<AgentGoalSpec>("ImplementFeatureGoal");
 
                 // instnatiate graph
-                var goalTree = goalTreeSpec.InstantiateGraph();
+                var goalTree = goalTreeSpec.InstantiateGraph(_serviceProvider);
 
                 // TODO gsemple: Jump-start the agent into a specified state, not always possible
                 agentState = _assetDataStore.GetHardRef<ProgrammerAgentState>("RefinedImplementationPlanModified");                
@@ -137,7 +137,6 @@ namespace BizDevAgent.Jobs
             //        }
             //    }
             //};
-
 
             // Run the machine on the goal hierarchy until done
             await StateMachineLoop(agentState);
@@ -198,6 +197,8 @@ namespace BizDevAgent.Jobs
                     transitionInfo.ResponseTokens = processResult.ResponseTokens;
                     transitionInfo.PromptContext = generatePromptResult.PromptContext;
                 }
+
+                await currentGoal.PreTransition(agentState);
 
                 // Transition to next step (push or pop)
                 CheckTransition(agentState, transitionInfo);
@@ -331,7 +332,7 @@ namespace BizDevAgent.Jobs
             promptContext.FeatureSpecification = FeatureSpecification;
 
             // Construct a special "done" goal.
-            if (!currentGoal.Spec.IsAutoComplete)
+            if (currentGoal.Spec.CompletionMethod != CompletionMethod.WhenMarkedDone)
             {
                 promptContext.OptionalSubgoals.Add(_doneGoal);
                 if (currentGoal.Spec.DoneDescription == null && currentGoal.RequiresDoneDescription())

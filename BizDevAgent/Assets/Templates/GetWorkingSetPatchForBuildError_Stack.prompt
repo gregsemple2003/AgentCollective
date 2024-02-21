@@ -32,5 +32,3 @@ And asked you to delete all the code in SaveLocal and instead print numbers from
 97: 
 98:         private async Task<List<TEntity>> GetLocal()
 99:         {
-
-If you want to add a new file, use @ADDED(GameDataStore.cs) as the header instead.

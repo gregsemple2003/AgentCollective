@@ -2,7 +2,7 @@
   "TypeId": "ProgrammerAgentState",
   "ShortTermMemory": {
     "TypeId": "ProgrammerShortTermMemory",
-    "CodingTaskStep":  3,
+    "CodingTaskStep":  2,
     "CodingTasks": {
       "Steps": [
         {
@@ -11,7 +11,7 @@
         },
         {
           "Step": 2,
-          "Description": "Create or ensure a Logger class exists with methods capable of handling various log levels (e.g., Info, Error, Warning)."
+          "Description": "Create a Logger class with methods capable of handling various log levels (e.g., Info, Error, Warning)."
         },
         {
           "Step": 3,

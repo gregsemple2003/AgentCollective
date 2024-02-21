@@ -1,0 +1,9 @@
+In order to accomplish the above, you've decided you're going to write C# code to call the agent API.
+
+The agent API has a single class with public methods.  When the methods are called, they will log information that tells you about the contents of the repository that you are tasked with modifying.
+
+{{{AdditionalData.AgentApiSkeleton}}}
+
+To write C# code to call the agent API, you must use the following structure:
+
+{{{AdditionalData.AgentApiSample}}}

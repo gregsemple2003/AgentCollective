@@ -1,8 +1,8 @@
-We want to decide on our repository working set, which is the set of text lines from files in the repository that we believe we should edit in order to accomplish this coding task step.
+We want to declare our repository working set, which is the set of text lines from files in the repository that we believe we should edit to accomplish this coding task step.  If you don't believe you need anything in your working set, just say @NoWorkingSet.  But if this step involves editing specific files or methods, you need to declare which ones you plan to edit.
 
 To do this, you'll write C# code to call the agent API.
 
-Try not to select more text lines than absolutely necessary for the task at hand, but to ensure that what you select is sufficient for the task.
+Try not to select more text lines than absolutely necessary for the task at hand, but ensure that what you select is sufficient for the task.
 
 The agent API has a single class with public methods.  When the methods are called, they will log information that tells you about the contents of the repository that you are tasked with modifying.
 
