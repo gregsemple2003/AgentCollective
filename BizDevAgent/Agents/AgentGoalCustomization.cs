@@ -12,16 +12,16 @@ namespace BizDevAgent.Agents
     [TypeId("AgentGoalCustomization")]
     public class AgentGoalCustomization : JsonAsset
     {
-        public virtual bool ShouldRequestCompletion(AgentState agentState) 
+        public virtual bool ShouldRequestPrompt(AgentState agentState) 
         { 
             return false;
         }
 
-        public virtual void CustomizePrompt(AgentPromptContext promptContext, AgentState agentState)
+        public virtual void PopulatePrompt(AgentPromptContext promptContext, AgentState agentState)
         {
         }
 
-        public virtual Task PreCompletion(AgentState agentState)
+        public virtual Task PrePrompt(AgentState agentState)
         {
             return Task.CompletedTask;
         }

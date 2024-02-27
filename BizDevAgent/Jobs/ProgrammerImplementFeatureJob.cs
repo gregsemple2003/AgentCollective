@@ -4,6 +4,9 @@ using BizDevAgent.Agents;
 using BizDevAgent.Utilities;
 using FluentResults;
 using BizDevAgent.Flow;
+using Microsoft.Extensions.DependencyInjection;
+using static System.Formats.Asn1.AsnWriter;
+using System;
 
 namespace BizDevAgent.Jobs
 {
@@ -72,36 +75,19 @@ namespace BizDevAgent.Jobs
 
         public AgentState CreateAgent(string targetLocalRepoPath)
         {
-            AgentState agentState = null;
-            try
-            {
-                _targetRepositoryQuerySession = _repositoryQueryService.CreateSession(targetLocalRepoPath);
-                ProgrammerContext.Current = new ProgrammerContext()
-                {
-                    ImplementFeatureJob = this,
-                    SelfRepositoryQuerySession = _selfRepositoryQuerySession,
-                    TargetRepositoryQuerySession = _targetRepositoryQuerySession,
-                };
-                var goalTreeSpec = _assetDataStore.GetHardRef<AgentGoalSpec>("ImplementFeatureGoal");
+            var goalTreeSpec = _assetDataStore.GetHardRef<AgentGoalSpec>("ImplementFeatureGoal");
 
-                // instnatiate graph
-                var goalTree = goalTreeSpec.InstantiateGraph(_serviceProvider);
+            // instantiate graph
+            var goalTree = goalTreeSpec.InstantiateGraph(_serviceProvider);
 
-                // TODO gsemple: Jump-start the agent into a specified state, not always possible
-                agentState = _assetDataStore.GetHardRef<ProgrammerAgentState>("RefinedImplementationPlanModified");                
-                agentState.SetCurrentGoal(goalTree.Children[1]);
-            }
-            finally
-            {
-                ProgrammerContext.Current = null;
-            }
-
+            // TODO gsemple: Jump-start the agent into a specified state, not always possible
+            var agentState = _assetDataStore.GetHardRef<ProgrammerAgentState>("RefinedImplementationPlanModified");                
+            agentState.SetCurrentGoal(goalTree.Children[1]);
             return agentState;
         }
 
-
-        public async override Task Run()
-        {            
+        public async Task RunInternal()
+        {
             // Clone the repository
             if (!Directory.Exists(LocalRepoPath))
             {
@@ -123,33 +109,30 @@ namespace BizDevAgent.Jobs
             // Define workflow
             var agentState = CreateAgent(LocalRepoPath);
 
-            // Initialize agent
-            //var agentState = new ProgrammerAgentState()
-            //{ 
-            //    ShortTermMemory = new ProgrammerShortTermMemory()
-            //    {
-            //        CodingTasks = new CodingTasks()
-            //        {
-            //            Steps = new List<ImplementationStep>
-            //            { 
-            //                new ImplementationStep { Step = 1, Description = "Example step, feel free to modify." }
-            //            }
-            //        }
-            //    }
-            //};
-
             // Run the machine on the goal hierarchy until done
             await StateMachineLoop(agentState);
 
             _logger.Log($"Agent execution complete.");
+        }
 
-            //// Build and report errors
-            //var repositoryQuerySession = _repositoryQueryService.CreateSession(LocalRepoPath);
-            //var buildResult = await BuildRepository(repositoryQuerySession);
-            //if (buildResult.IsFailed)
-            //{
-            //    throw new NotImplementedException("The build failed, we don't deal with that yet.");
-            //}
+        public async override Task Run()
+        {
+            try
+            {
+                _targetRepositoryQuerySession = _repositoryQueryService.CreateSession(LocalRepoPath);
+                ProgrammerContext.Current = new ProgrammerContext()
+                {
+                    ImplementFeatureJob = this,
+                    SelfRepositoryQuerySession = _selfRepositoryQuerySession,
+                    TargetRepositoryQuerySession = _targetRepositoryQuerySession,
+                };
+
+                await RunInternal();
+            }
+            finally
+            {
+                ProgrammerContext.Current = null;
+            }
         }
 
         public struct TransitionInfo
@@ -171,12 +154,12 @@ namespace BizDevAgent.Jobs
             {
                 agentState.TryGetGoal(out var currentGoal);
 
-                await currentGoal.PreCompletion(agentState);
+                await currentGoal.PrePrompt(agentState);
 
                 var transitionInfo = new TransitionInfo();
-                if (currentGoal.ShouldRequestCompletion(agentState))
+                if (currentGoal.ShouldRequestPrompt(agentState))
                 {
-                    currentGoal.IncrementCompletionCount(1);
+                    currentGoal.IncrementPromptCount(1);
 
                     var generatePromptResult = await GeneratePrompt(agentState);
                     var prompt = generatePromptResult.Prompt;
@@ -224,12 +207,12 @@ namespace BizDevAgent.Jobs
                 {
                     _logger.Log($"[{currentGoal.Spec.Title}]: pushing goal [{chosenGoal.Title}]");
 
-                    agentState.InsertGoal(chosenGoal, parent: currentGoal);
+                    agentState.InsertGoal(chosenGoal, _serviceProvider, parent: currentGoal, forceCurrent: true);
                 }
             }
 
             // Check for completion, and pop
-            if (currentGoal.Spec.CompletionMethod == CompletionMethod.WhenChildrenComplete)
+            if (currentGoal.Spec.CompletionMethod == CompletionMethod.WhenChildrenDone)
             {
                 if (currentGoal.Children.Count == 0)
                 {
@@ -345,15 +328,15 @@ namespace BizDevAgent.Jobs
             // Run template substitution on goal stack
             foreach (var goal in agentState.Goals)
             {
-                goal.CustomizePrompt(promptContext, agentState);
+                goal.PopulatePrompt(promptContext, agentState);
                 goal.Spec.StackDescription.Bind(promptContext);
 
-                var reminderDescription = goal.Spec.ReminderDescription;                
-                if (reminderDescription != null)
-                {
-                    reminderDescription.Bind(promptContext);
-                    promptContext.Reminders.Add(new AgentReminder { Description = reminderDescription.Text });
-                }
+                //var reminderDescription = goal.Spec.ReminderDescription;                
+                //if (reminderDescription != null)
+                //{
+                //    reminderDescription.Bind(promptContext);
+                //    promptContext.Reminders.Add(new AgentReminder { Description = reminderDescription.Text });
+                //}
             }
 
             // Run template substitution for optional goals

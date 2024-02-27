@@ -1,0 +1,29 @@
+I'm seeing the following compiler error, please choose the best solution given all available information:
+
+C:\Features\BizDevAgent_convertxml\BizDevAgent\DataStore\CompanyDataStore.cs(72,17): error CS0103: The name 'logger' does not exist in the current context [C:\Features\BizDevAgent_convertxml\BizDevAgent\BizDevAgent.csproj]
+
+Please show me how to modify the code by implementing the following class.  You should use Roslyn to programmatically modify the string 'code' which contains the text of the file with the compile error.
+
+using System.Collections.Generic;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis;
+// add using declarations as necessary
+
+public class CodeProcessor : ICodeProcessor
+{
+    public string ModifyCode(string code)
+    {
+        // your implementation goes here
+    }
+}
+
+Below is the file that is having problems:
+
+{{{Code}}}
+
+FAQ
+
+What system are we using for logging?  
+
+Use the Microsoft extensions logging.

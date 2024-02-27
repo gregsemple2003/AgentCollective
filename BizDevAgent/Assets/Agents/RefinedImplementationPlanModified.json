@@ -2,7 +2,7 @@
   "TypeId": "ProgrammerAgentState",
   "ShortTermMemory": {
     "TypeId": "ProgrammerShortTermMemory",
-    "CodingTaskStep":  2,
+    "CodingTaskStep":  3,
     "CodingTasks": {
       "Steps": [
         {

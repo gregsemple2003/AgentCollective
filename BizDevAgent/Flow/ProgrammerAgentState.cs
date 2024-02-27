@@ -18,6 +18,8 @@ namespace BizDevAgent.Flow
         private readonly RepositoryQuerySession _targetRepositoryQuerySession;
         private readonly RepositoryQuerySession _selfRepositoryQuerySession;
 
+        public ProgrammerShortTermMemory ProgrammerShortTermMemory { get { return (ProgrammerShortTermMemory)ShortTermMemory; } }
+
         public ProgrammerAgentState(CodeAnalysisService codeAnalysisService, VisualStudioService visualStudioService, JobRunner jobRunner, IServiceProvider serviceProvider)
         {
             _codeAnalysisService = codeAnalysisService;
@@ -53,6 +55,18 @@ namespace BizDevAgent.Flow
             }
 
             return researchJobOutput;
+        }
+
+        public async Task UpdateWorkingSet()
+        {
+            ProgrammerShortTermMemory.WorkingSet = await GenerateWorkingSet(ProgrammerShortTermMemory.WorkingSetEntries);
+        }
+
+        public async Task<string> GenerateWorkingSet(List<WorkingSetEntry> workingSetEntries)
+        {
+            var workingSetUpdateJob = (Job)ActivatorUtilities.CreateInstance(_serviceProvider, typeof(WorkingSetUpdateJob), workingSetEntries);
+            var result = await _jobRunner.RunJob(workingSetUpdateJob);            
+            return result.OutputStdOut;
         }
     }
 }

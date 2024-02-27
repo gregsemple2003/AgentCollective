@@ -1,0 +1,19 @@
+I'm seeing the following compiler error, please choose the best solution given all available information:
+
+C:\Features\BizDevAgent_convertxml\BizDevAgent\DataStore\CompanyDataStore.cs(72,17): error CS0103: The name 'logger' does not exist in the current context [C:\Features\BizDevAgent_convertxml\BizDevAgent\BizDevAgent.csproj]
+
+The code is commented into "chunks".  You can modify any parts of the code you to in order to fix the above compile error.  However, if you modify a chunk you must show me the entire chunk as you have modified it including the top chunk comment ("// CHUNK <n>"), don't omit any part of the new chunk.
+
+This is important since I'll take the entire chunk as you give it to me, and apply that as a patch to fix the problem.  If you omit part of the chunk, it will cause further compiler errors.
+
+Only give me code snippets, and do not explain why you made the choices you made.
+
+Below is the file that is having problems:
+
+{{{Code}}}
+
+FAQ
+
+What system are we using for logging?  
+
+Use the Microsoft extensions logging.

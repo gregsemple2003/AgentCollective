@@ -1,17 +1,17 @@
 {
-  "TypeId": "AgentGoal",
+  "TypeId": "AgentGoalSpec",
   "Title": "Implement Feature",
   "AutoComplete": true,
   "StackDescription": { "Text": "You are being tasked with the job to implement a feature in C# by modifying an existing repository." },
   "RequiredSubgoals": [
     {
-      "TypeId": "AgentGoal",
+      "TypeId": "AgentGoalSpec",
       "Title": "Refine Implementation Plan",
       "StackDescription": { "Template": "RefineImplementationPlan_Stack" },
       "DoneDescription": { "Template": "RefineImplementationPlan_Done" },
       "OptionalSubgoals": [
         {
-          "TypeId": "AgentGoal",
+          "TypeId": "AgentGoalSpec",
           "Title": "Request Research Job",
           "Customization": { "TypeId": "RequestResearchJobCustomization" },
           "OptionDescription": { "Template": "RequestResearchJob_Option" },
@@ -19,17 +19,17 @@
           "DoneDescription": { "Template": "RequestResearchJob_Done" },
           "OptionalSubgoals": [
             {
-              "TypeId": "AgentGoal",
-              "Customization": { "TypeId": "SnythesizeResearchOutputCustomization" },
-              "Title": "Snythesize Research Output",
+              "TypeId": "AgentGoalSpec",
+              "Customization": { "TypeId": "SynthesizeResearchOutputCustomization" },
+              "Title": "Synthesize Research Output",
               "AutoComplete": true,
-              "OptionDescription": { "Template": "SnythesizeResearchOutput_Option" },
-              "StackDescription": { "Template": "SnythesizeResearchOutput_Stack" }
+              "OptionDescription": { "Template": "SynthesizeResearchOutput_Option" },
+              "StackDescription": { "Template": "SynthesizeResearchOutput_Stack" }
             }
           ]
         },
         {
-          "TypeId": "AgentGoal",
+          "TypeId": "AgentGoalSpec",
           "Title": "Request Help",
           "OptionDescription": { "Template": "RequestHelp_Option" },
           "StackDescription": { "Template": "RequestHelp_Stack" }
@@ -37,62 +37,62 @@
       ]
     },
     {
-      "TypeId": "AgentGoal",
+      "TypeId": "AgentGoalSpec",
       "Title": "Modify Repository",
       "InstanceTypeId": "ModifyRepositoryAgentGoal",
-      "Customization": { "TypeId": "ModifyRepositoryCustomization" },
       "OptionDescription": { "Template": "ModifyRepository_Option" },
       "StackDescription": { "Template": "ModifyRepository_Stack" },
       "DoneDescription": { "Template": "ModifyRepository_Done" },
       "CompletionMethod": "WhenMarkedDone",
-      "RequiredSubgoals": [      
+      "RequiredSubgoals": [
         {
-          "TypeId": "AgentGoal",
+          "TypeId": "AgentGoalSpec",
           "Key": "ModifyWorkingSet",
+          "InstanceTypeId": "ModifyWorkingSetAgentGoal",
           "Title": "Modify Working Set",
           "CompletionMethod": "WhenMarkedDone",
-          "Customization": { "TypeId": "ModifyRepositoryCustomization" },
           "OptionDescription": { "Template": "ModifyWorkingSet_Option" },
           "StackDescription": { "Template": "ModifyWorkingSet_Stack" },
           "DoneDescription": { "Template": "ModifyWorkingSet_Done" }
         },
         {
-          "TypeId": "AgentGoal",
+          "TypeId": "AgentGoalSpec",
+          "InstanceTypeId": "GetWorkingSetPatchAgentGoal",
           "Key": "GetWorkingSetPatch",
           "Title": "Get Working Set Patch",
           "CompletionMethod": "WhenMarkedDone",
-          "Customization": { "TypeId": "ModifyRepositoryCustomization" },
           "OptionDescription": { "Template": "GetWorkingSetPatch_Option" },
           "StackDescription": { "Template": "GetWorkingSetPatch_Stack" },
           "DoneDescription": { "Template": "GetWorkingSetPatch_Done" },
           "ReminderDescription": { "Template": "GetWorkingSetPatch_Reminder" }
         },
         {
-          "TypeId": "AgentGoal",
+          "TypeId": "AgentGoalSpec",
+          "InstanceTypeId": "FixBuildErrorsAgentGoal",
           "Key": "FixBuildErrors",
           "Title": "Fix Build Errors",
           "CompletionMethod": "WhenMarkedDone",
-          "Customization": { "TypeId": "ModifyRepositoryCustomization" },
           "OptionDescription": { "Template": "FixBuildErrors_Option" },
           "StackDescription": { "Template": "FixBuildErrors_Stack" },
           "DoneDescription": { "Template": "FixBuildErrors_Done" },
           "OptionalSubgoals": [
             {
-              "TypeId": "AgentGoal",
-              "Key": "GetWorkingSetPatchForBuildError",
-              "Title": "Get Working Set Patch For Build Error",
+              "TypeId": "AgentGoalSpec",
+              "InstanceTypeId": "GetWorkingSetPatchAgentGoal",
+              "Key": "GetWorkingSetPatch",
+              "Title": "Get Working Set Patch",
               "CompletionMethod": "WhenMarkedDone",
-              "Customization": { "TypeId": "ModifyRepositoryCustomization" },
-              "OptionDescription": { "Template": "GetWorkingSetPatchForBuildError_Option" },
-              "StackDescription": { "Template": "GetWorkingSetPatchForBuildError_Stack" },
-              "DoneDescription": { "Template": "GetWorkingSetPatchForBuildError_Done" }
+              "OptionDescription": { "Template": "GetWorkingSetPatch_Option" },
+              "StackDescription": { "Template": "GetWorkingSetPatch_Stack" },
+              "DoneDescription": { "Template": "GetWorkingSetPatch_Done" },
+              "ReminderDescription": { "Template": "GetWorkingSetPatch_Reminder" }
             },
             {
-              "TypeId": "AgentGoal",
+              "TypeId": "AgentGoalSpec",
+              "InstanceTypeId": "RefineFixPlanAgentGoal",
               "Key": "RefineFixPlan",
               "Title": "Refine Fix Plan",
               "CompletionMethod": "WhenMarkedDone",
-              "Customization": { "TypeId": "ModifyRepositoryCustomization" },
               "OptionDescription": { "Template": "RefineFixPlan_Option" },
               "StackDescription": { "Template": "RefineFixPlan_Stack" },
               "DoneDescription": { "Template": "RefineFixPlan_Done" }
@@ -102,11 +102,11 @@
       ]
     },
     {
-      "TypeId": "AgentGoal",
+      "TypeId": "AgentGoalSpec",
       "Title": "Refine Unit Tests"
     },
     {
-      "TypeId": "AgentGoal",
+      "TypeId": "AgentGoalSpec",
       "Title": "Write Unit Tests"
     }
   ]

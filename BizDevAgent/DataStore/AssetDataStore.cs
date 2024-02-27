@@ -18,6 +18,7 @@ namespace BizDevAgent.DataStore
     {
         public AssetDataStore(string rootPath, IServiceProvider serviceProvider) : base(rootPath, serviceProvider)
         {
+            RegisterFactory(".cs", new TextAssetFactory());
             RegisterFactory(".txt", new TextAssetFactory());
             RegisterFactory(".prompt", new PromptAssetFactory());
         }

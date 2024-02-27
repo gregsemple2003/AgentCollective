@@ -1,5 +1,6 @@
 ﻿using BizDevAgent.DataStore;
 using BizDevAgent.Agents;
+using BizDevAgent.Services;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -14,6 +15,24 @@ namespace BizDevAgent.Flow
     {
         public int Step { get; set; }
         public string Description { get; set; }
+    }
+
+    public class WorkingSetEntry
+    {
+        // Change the delegate to return Task for async support
+        public delegate Task RepositoryQueryFunction();
+
+        private RepositoryQueryFunction _queryFunction;
+
+        public WorkingSetEntry(RepositoryQueryFunction queryFunction)
+        {
+            _queryFunction = queryFunction;
+        }
+
+        public void WriteToConsole()
+        {
+            _queryFunction.Invoke();
+        }
     }
 
     /// <summary>
@@ -39,14 +58,31 @@ namespace BizDevAgent.Flow
         public JToken Conclusions { get; set; }
 
         /// <summary>
+        /// The entries needed to regenerate the WorkingSet.  We can cull these entries to fit within the context window.
+        /// </summary>
+        [JsonIgnoreInPrompt]
+        public List<WorkingSetEntry> WorkingSetEntries { get; set; }
+
+        /// <summary>
         /// Working set memory, of the most relevant pieces of information for the given goal (e.g. subset of repository text).
         /// </summary>
+        [JsonIgnoreInPrompt]
         public string WorkingSet {  get; set; }
+
+        public ProgrammerShortTermMemory()
+        {
+            WorkingSetEntries = new List<WorkingSetEntry>();
+        }
 
         public string ToJson()
         {
-            return JsonConvert.SerializeObject(this, Formatting.Indented);
-        }
+            var settings = new JsonSerializerSettings
+            {
+                Formatting = Formatting.Indented,
+                ContractResolver = new JsonPromptContractResolver()
+            };
 
+            return JsonConvert.SerializeObject(this, settings);
+        }
     }
 }

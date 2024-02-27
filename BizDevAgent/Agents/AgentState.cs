@@ -49,21 +49,18 @@ namespace BizDevAgent.Agents
             Observations = new List<AgentObservation>();
         }
 
-        public void InsertGoal(AgentGoalSpec childSpec, AgentGoal parent = null, bool forceCurrent = false)
+        public void InsertGoal(AgentGoalSpec childSpec, IServiceProvider serviceProvider, AgentGoal parent = null, bool forceCurrent = false)
         {
-            var child = new AgentGoal(childSpec);
-
             if (parent == null)
             {
                 TryGetGoal(out parent);
             }
 
+            var child = childSpec.InstantiateNode(serviceProvider);
             if (parent != null)
             {
-                parent.Children.Add(child);
+                parent.AddChild(child);
             }
-
-            child.SetParent(parent);
 
             if (_currentGoal == null || forceCurrent)
             {

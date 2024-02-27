@@ -1,5 +1,5 @@
 {
-  "TypeId": "AgentGoal",
+  "TypeId": "AgentGoalSpec",
   "Title": "Done",
   "StackDescription": { "Text": "You have completed this goal." },
   "OptionDescription": { "Template": "Done_Option" }

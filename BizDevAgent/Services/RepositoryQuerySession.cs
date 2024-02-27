@@ -4,6 +4,9 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp;
 using System.Text.RegularExpressions;
 using FluentResults;
+using BizDevAgent.Flow;
+using static BizDevAgent.Flow.WorkingSetEntry;
+using System.IO;
 
 namespace BizDevAgent.Services
 {
@@ -14,6 +17,8 @@ namespace BizDevAgent.Services
     public class RepositoryQuerySession
     {
         public string LocalRepoPath { get; internal set; }
+
+        public List<WorkingSetEntry> WorkingSetEntries { get; internal set; }
 
         private readonly RepositorySummaryDataStore _repositorySummaryDataStore;
         private readonly RepositoryQueryService _repositoryQueryService;
@@ -27,12 +32,19 @@ namespace BizDevAgent.Services
             _gitService = gitService;
             _repositorySummaryDataStore = repositorySummaryDataStore;
             LocalRepoPath = localRepoPath;
+            WorkingSetEntries = new List<WorkingSetEntry>();
         }
 
         // Prints a summary about either a folder or file in the repository.  Use "" for a summary of the entire repository.
         [AgentApi]
         public async Task PrintRepositoryPathSummary(string path)
         {
+            RepositoryQueryFunction workingSetAction = async () => 
+            {
+                await PrintRepositoryPathSummary(path);
+            };
+            WorkingSetEntries.Add(new WorkingSetEntry(workingSetAction));
+
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintRepositoryPathSummary)}(path = {path}):");
 
             // Logic to print module summary
@@ -45,6 +57,12 @@ namespace BizDevAgent.Services
         [AgentApi][WorkingSet]
         public async Task PrintFileContents(string fileName)
         {
+            RepositoryQueryFunction workingSetAction = async () =>
+            {
+                await PrintFileContents(fileName);
+            };
+            WorkingSetEntries.Add(new WorkingSetEntry(workingSetAction));
+
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileContents)}(fileName = {fileName}):");
 
             var repoFile = FindFileInRepo(fileName);
@@ -61,6 +79,12 @@ namespace BizDevAgent.Services
         [AgentApi]
         public async Task PrintFileContentsAroundLine(string fileName, int lineNumber, int linesToInclude)
         {
+            RepositoryQueryFunction workingSetAction = async () =>
+            {
+                await PrintFileContentsAroundLine(fileName, lineNumber, linesToInclude);
+            };
+            WorkingSetEntries.Add(new WorkingSetEntry(workingSetAction));
+
             Console.WriteLine($"BEGIN OUTPUT from {nameof(PrintFileContents)}(fileName = {fileName}):");
 
             var repoFile = FindFileInRepo(fileName);
@@ -187,13 +211,13 @@ namespace BizDevAgent.Services
             return Task.CompletedTask;
         }
 
-        public async Task<Result<string>> AddFileToRepo(string fileName, string fileContents)
+        public async Task<Result<RepositoryFile>> AddFileToRepo(string fileName, string fileContents)
         {
             var result = await _gitService.AddFile(LocalRepoPath, fileName, fileContents);
             if (result.IsFailed)
             {
                 Console.WriteLine($"Failed to add file to repository: {result.Errors[0].Message}");
-                return result;
+                return Result.Fail(result.Errors[0].Message);
             }
 
             // Update the internal cache to include the new file
@@ -208,7 +232,41 @@ namespace BizDevAgent.Services
             var lines = fileContents.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
             _fileLinesCache[fileName] = lines;
 
-            return result;
+            return newRepoFile;
+        }
+
+        public async Task<Result> UpdateFileInRepo(string fileName, string fileContents)
+        {
+            // Attempt to find the file within the repository.
+            var repoFile = FindFileInRepo(fileName, logError: false);
+            if (repoFile == null)
+            {
+                return Result.Fail($"File '{fileName}' not found in the repository.");
+            }
+
+            try
+            {
+                // Write the new contents to the file.
+                var filePath = Path.Combine(LocalRepoPath, fileName);
+                await File.WriteAllTextAsync(filePath, fileContents);
+
+                // Use the Git service to add and commit the changes.
+                var addResult = await _gitService.AddFile(LocalRepoPath, fileName, fileContents);
+                if (addResult.IsFailed)
+                {
+                    return Result.Fail(addResult.Errors[0].Message);
+                }
+
+                // Update the internal cache.
+                _fileLinesCache[fileName] = fileContents.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+                repoFile.Contents = fileContents;
+
+                return Result.Ok();
+            }
+            catch (Exception ex)
+            {
+                return Result.Fail($"Failed to update file '{fileName}' in the repository. Error: {ex.Message}");
+            }
         }
 
         public RepositoryFile FindFileInRepo(string fileName, bool logError = true)

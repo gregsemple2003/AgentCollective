@@ -47,13 +47,13 @@ namespace BizDevAgent.Agents
         /// <summary>
         /// How many times we have requested a completion from this state, not including children.
         /// </summary>
-        public int CompletionCount { get; private set; }
+        public int PromptCount { get; private set; }
 
         public AgentGoalSpec Spec { get; }
         public List<AgentGoal> Children { get; private set; }
+        public AgentGoal Parent { get; private set; }
 
-        internal bool _done;
-        internal AgentGoal Parent { get; private set; }
+        private bool _done;
 
         public AgentGoal(AgentGoalSpec spec)
         {
@@ -84,6 +84,26 @@ namespace BizDevAgent.Agents
             return false;
         }
 
+        public void AddChild(AgentGoal goal)
+        {
+            if (goal == null) throw new ArgumentNullException(nameof(goal), "Child goal cannot be null.");
+
+            goal.SetParent(this);
+            Children.Add(goal);
+        }
+
+        public void RemoveChildren(Func<AgentGoal, bool> predicate)
+        {
+            for (int childIndex = Children.Count - 1; childIndex >= 0; childIndex--)
+            {
+                AgentGoal child = Children[childIndex];
+                if (predicate(child))
+                {
+                    Children.RemoveAt(childIndex);
+                }
+            }
+        }
+
         public void MarkDone()
         {
             if (!_done)
@@ -101,37 +121,39 @@ namespace BizDevAgent.Agents
         /// Whether this goal needs a completion, which is a prompt and response from the LLM.
         /// </summary>
         /// <returns></returns>
-        public bool ShouldRequestCompletion(AgentState agentState)
+        public bool ShouldRequestPrompt(AgentState agentState)
         {
-            if (CompletionCount >= Spec.CompletionsLimit) return false;
+            if (PromptCount >= Spec.PromptCountLimit) return false;
 
-            bool customizationWantsCompletion = Spec.Customization != null && Spec.Customization.ShouldRequestCompletion(agentState);
-            customizationWantsCompletion |= ShouldRequestCompletionCustom(agentState);
-            return customizationWantsCompletion || Spec.OptionalSubgoals.Count > 0;
+            bool customizationWantsPrompt = Spec.Customization != null && Spec.Customization.ShouldRequestPrompt(agentState);
+            customizationWantsPrompt |= ShouldRequestPromptCustom(agentState);
+            bool shouldPromptOptions = !IsDone() && Spec.OptionalSubgoals.Count > 0;
+            return customizationWantsPrompt || shouldPromptOptions;
         }
 
-        public void IncrementCompletionCount(int delta)
+        public void IncrementPromptCount(int delta)
         {
-            CompletionCount += delta;
+            PromptCount += delta;
 
-            if (CompletionCount >= Spec.CompletionsLimit)
+            if (PromptCount >= Spec.PromptCountLimit)
             {
                 MarkDone();
             }
         }
 
-        public async Task PreCompletion(AgentState agentState)
+        public async Task PrePrompt(AgentState agentState)
         {
+            PrePromptCustom(agentState);
             if (Spec.Customization != null)
             {
-                await Spec.Customization.PreCompletion(agentState);
+                await Spec.Customization.PrePrompt(agentState);
             }
         }
 
-        public void CustomizePrompt(AgentPromptContext promptContext, AgentState agentState)
+        public void PopulatePrompt(AgentPromptContext promptContext, AgentState agentState)
         {
-            Spec.Customization?.CustomizePrompt(promptContext, agentState);
-            CustomizePromptCustom(promptContext, agentState);
+            Spec.Customization?.PopulatePrompt(promptContext, agentState);
+            PopulatePromptCustom(promptContext, agentState);
         }
 
         public bool RequiresDoneDescription()
@@ -146,12 +168,13 @@ namespace BizDevAgent.Agents
             if (Spec.Customization != null)
             {
                 await Spec.Customization.ProcessResponse(prompt, response, agentState, languageModelParser);
-                await ProcessResponseCustom(prompt, response, agentState, languageModelParser);
             }
+            await ProcessResponseCustom(prompt, response, agentState, languageModelParser);
         }
 
-        protected virtual bool ShouldRequestCompletionCustom(AgentState agentState) { return false; }
-        protected virtual void CustomizePromptCustom(AgentPromptContext promptContext, AgentState agentState) { }
+        protected virtual bool ShouldRequestPromptCustom(AgentState agentState) { return false; }
+        protected virtual Task PrePromptCustom(AgentState agentState) { return Task.CompletedTask; }
+        protected virtual void PopulatePromptCustom(AgentPromptContext promptContext, AgentState agentState) { }
         protected virtual Task ProcessResponseCustom(string prompt, string response, AgentState agentState, IResponseParser languageModelParser) { return Task.CompletedTask; }
         internal virtual void OnEnter() { }
         internal virtual async Task PreTransition(AgentState agentState) { }
@@ -162,7 +185,7 @@ namespace BizDevAgent.Agents
     /// </summary>
     public enum CompletionMethod
     {
-        WhenChildrenComplete,     // Goal is done when all children are done.
+        WhenChildrenDone,     // Goal is done when all children are done.
         WhenMarkedDone            // Goal is done when manually marked done.
     }
 
@@ -172,7 +195,7 @@ namespace BizDevAgent.Agents
     ///     - The goal stack, which is a top-down series of descriptions about the task the agent is currently focused on.
     ///     - The completion conditions, which must be true before this goal can be popped from the stack.
     /// </summary>
-    [TypeId("AgentGoal")]
+    [TypeId("AgentGoalSpec")]
     public class AgentGoalSpec : JsonAsset
     {
         /// <summary>
@@ -231,11 +254,11 @@ namespace BizDevAgent.Agents
         public CompletionMethod CompletionMethod { get; set; }
 
         public string TokenPrefix => "@";
-        public int CompletionsLimit => 3;
+        public int PromptCountLimit => 3;
 
         public AgentGoalSpec()
         {
-            CompletionMethod = CompletionMethod.WhenChildrenComplete;
+            CompletionMethod = CompletionMethod.WhenChildrenDone;
         }
 
         public AgentGoalSpec(string title)

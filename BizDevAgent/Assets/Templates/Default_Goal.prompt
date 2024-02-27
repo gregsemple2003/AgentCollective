@@ -14,6 +14,13 @@ MEMORY
 Your short-term memory stores conclusions that you've already determined with a high-reliability to be true.  Currently, it has the following state:
 
 {{{ShortTermMemoryJson}}}
+{{#if AdditionalData.WorkingSet}}
+Additionally, your working set is currently as follows:
+
+  {{{AdditionalData.WorkingSet}}}
+{{else}}
+Your working set is currently empty.
+{{/if}}
 
 {{#if ShouldDisplayActions}}
 ACTIONS

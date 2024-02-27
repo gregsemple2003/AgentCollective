@@ -1,0 +1,130 @@
+Make the modifications you suggested to the CompanyDataStore.cs file in the snippet format listed below.
+
+SNIPPET FORMAT
+
+Show the modifications that you would do in the following format.
+
+For any lines that have been deleted include all original lines with <DELETED> next to the line number of any removed lines. Each <DELETED> line should show its original line number.
+
+If you add any lines, include <ADDED> on that line but do not put any line number.  The line numbers only indicate the original file's line number, not the new one.
+
+If you edit any lines, include both a <DELETED> line for the old line, followed by an <ADDED> line.
+
+As an example, if I gave you this:
+
+@ORIG(File.cs)
+92:         private async Task SaveLocal()
+93:         {
+94:             var json = JsonConvert.SerializeObject(All, Formatting.Indented, _settings);
+95:             await File.WriteAllTextAsync(_fileName, json);
+96:         }
+97: 
+98:         private async Task<List<TEntity>> GetLocal()
+99:         {
+
+And asked you to delete all the code in SaveLocal and instead print numbers from 1 to 100, you might give me:
+
+@PATCHED(File.cs)
+92:         private async Task SaveLocal()
+93:         {
+                for (int i = 1; i <= 100; i++) { <ADDED>
+                    Console.WriteLine(i); <ADDED>
+                } <ADDED>
+94:             var json = JsonConvert.SerializeObject(All, Formatting.Indented, _settings); <DELETED>
+95:             await File.WriteAllTextAsync(_fileName, json); <DELETED>
+96:         }
+97: 
+98:         private async Task<List<TEntity>> GetLocal()
+99:         {
+
+If you want to add a new file, use @ADDED(GameDataStore.cs) as the header instead.
+
+FILE CONTENTS: CompanyDataStore.cs
+1: using HtmlAgilityPack;
+2: using PuppeteerSharp;
+3: using System.Data;
+4: using Newtonsoft.Json;
+5: using System.Reflection;
+6: using BizDevAgent.Model;
+7: using BizDevAgent.Agents;
+8: 
+9: namespace BizDevAgent.DataStore
+10: {
+11:     public class CompanyDataStore : FileDataStore<Company>
+12:     {
+13:         public const string CachedFileName = "companies.json";
+14: 
+15:         public List<Company> Companies { get; private set; }
+16: 
+17:         private readonly WebBrowsingAgent _browsingAgent;
+18: 
+19:         public CompanyDataStore(string path, WebBrowsingAgent browsingAgent) : base(path)
+20:         {
+21:             _browsingAgent = browsingAgent;
+22:         }
+23: 
+24:         protected override async Task<List<Company>> GetRemote()
+25:         {
+26:             // Navigate to the Webpage
+27:             var result = await _browsingAgent.BrowsePage("https://www.gamedevmap.com/index.php?location=&country=United%20States&state=&city=&query=&type=Developer&start=1&count=2000");
+28:             var page = result.Value.Page;
+29: 
+30:             // Wait for the selector to ensure the elements are loaded
+31:             await page.WaitForSelectorAsync("tr.row1");
+32:             await page.WaitForSelectorAsync("tr.row2");
+33: 
+34:             // Select and iterate over the elements
+35:             var companyCount = 0;
+36:             var rows1 = await page.QuerySelectorAllAsync("tr.row1");
+37:             var rows2 = await page.QuerySelectorAllAsync("tr.row2");
+38:             var list1 = rows1.ToList();
+39:             var list2 = rows2.ToList();
+40: 
+41:             // Concatenate the two lists
+42:             var rows = list1.Concat(list2).ToList();
+43: 
+44:             var companies = new List<Company>();
+45:             foreach (var row in rows)
+46:             {
+47:                 var content = await row.EvaluateFunctionAsync<string>("e => e.outerHTML");
+48: 
+49:                 // Parse the HTML content
+50:                 var htmlDoc = new HtmlDocument();
+51:                 htmlDoc.LoadHtml(content);
+52: 
+53:                 // Extract the data
+54:                 var companyNameNode = htmlDoc.DocumentNode.SelectSingleNode("//a");
+55:                 var companyTypeNode = htmlDoc.DocumentNode.SelectSingleNode("//td[3]");
+56:                 var locationNode = htmlDoc.DocumentNode.SelectNodes("//td[position() >= 4 and position() <= 6]");
+57: 
+58:                 var companyName = companyNameNode.InnerText.Trim();
+59:                 var companyUrl = companyNameNode.GetAttributeValue("href", string.Empty);
+60:                 var companyType = companyTypeNode.InnerText.Trim();
+61:                 var location = string.Join(", ", locationNode.Select(node => node.InnerText.Trim()));
+62: 
+63:                 var company = new Company
+64:                 {
+65:                     Name = companyName,
+66:                     Url = companyUrl,
+67:                     Type = companyType,
+68:                     Location = location
+69:                 };
+70:                 companies.Add(company);
+71: 
+72:                 logger.Info($"{companyName}, {companyUrl}, {companyType}, {location}");
+73:                 companyCount++;
+74:             }
+75:             logger.Info($"{companyCount} companies parsed.");
+76: 
+77:             return companies;
+78:         }
+79: 
+80:         protected override string GetKey(Company company)
+81:         {
+82:             return company.Name;
+83:         }
+84:     }
+85: }
+86: 
+
+

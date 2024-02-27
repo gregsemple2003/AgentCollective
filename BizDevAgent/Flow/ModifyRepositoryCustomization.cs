@@ -33,28 +33,28 @@ namespace BizDevAgent.Flow
             _implementFeatureJob = ProgrammerContext.Current.ImplementFeatureJob;
         }
 
-        public override bool ShouldRequestCompletion(AgentState agentState)
+        public override bool ShouldRequestPrompt(AgentState agentState)
         {
             if (agentState.TryGetGoal(out var currentGoal))
             {
                 if (currentGoal.Spec.Key == "ModifyWorkingSet") // TODO gsemple: should get post load working so we can bind this goal as reference variable in ctor, or consider putting in goal data
                 {
-                    return true;
+                    //return true;
                 }
                 else if (currentGoal.Spec.Key == "GetWorkingSetPatch")
                 {
-                    return true;
+                    //return true;
                 }
                 else if (currentGoal.Spec.Key == "FixBuildErrors")
                 {
-                    return _buildResult.IsFailed;
+                    //return _buildResult.IsFailed;
                 }
             }
 
             return false;
         }
 
-        public override void CustomizePrompt(AgentPromptContext promptContext, AgentState agentState)
+        public override void PopulatePrompt(AgentPromptContext promptContext, AgentState agentState)
         {
             if (!agentState.TryGetGoal(out var currentGoal)) return;
             var programmerAgentState = (agentState as ProgrammerAgentState);
@@ -62,36 +62,37 @@ namespace BizDevAgent.Flow
             var programmerShortTermMemory = agentState.ShortTermMemory as ProgrammerShortTermMemory;
             promptContext.AdditionalData["CodingTaskStep"] = programmerShortTermMemory.CodingTaskStep;
 
+            // Refresh working set since repo file contents may have changed
+            programmerAgentState.UpdateWorkingSet().GetAwaiter().ToResult();
+            promptContext.AdditionalData["WorkingSet"] = programmerShortTermMemory.WorkingSet;
+
             if (currentGoal.Spec.Key == "ModifyWorkingSet")
             {
-                var requiredMethodAttributes = new List<string>() { "WorkingSet" };
-                var agentApiSkeleton = programmerAgentState.GenerateAgentApiSkeleton(requiredMethodAttributes);
-                var agentApiSample = _selfRepositoryQuerySession.FindFileInRepo($"{nameof(RepositoryQueryJob)}.cs");
-                promptContext.AdditionalData["AgentApiSkeleton"] = agentApiSkeleton;
-                promptContext.AdditionalData["AgentApiSample"] = agentApiSample.Contents;
-            }
-            else if (currentGoal.Spec.Key == "GetWorkingSetPatch")
-            {
+                //var requiredMethodAttributes = new List<string>() { "WorkingSet" };
+                //var agentApiSkeleton = programmerAgentState.GenerateAgentApiSkeleton(requiredMethodAttributes);
+                //var agentApiSample = _selfRepositoryQuerySession.FindFileInRepo($"{nameof(RepositoryQueryJob)}.cs");
+                //promptContext.AdditionalData["AgentApiSkeleton"] = agentApiSkeleton;
+                //promptContext.AdditionalData["AgentApiSample"] = agentApiSample.Contents;
             }
             else if (currentGoal.Spec.Key == "FixBuildErrors")
             {
-                if (_buildResult != null)
-                {
-                    var sb = new StringBuilder();
-                    foreach(var error in _buildResult.Errors)
-                    {
-                        var buildError = (error as BuildError);
-                        if (buildError != null)
-                        {
-                            sb.AppendLine(buildError.RawMessage);
-                        }
-                    }
-                    promptContext.AdditionalData["BuildErrors"] = sb.ToString();
-                }
+                //if (_buildResult != null)
+                //{
+                //    var sb = new StringBuilder();
+                //    foreach(var error in _buildResult.Errors)
+                //    {
+                //        var buildError = (error as BuildError);
+                //        if (buildError != null)
+                //        {
+                //            sb.AppendLine(buildError.RawMessage);
+                //        }
+                //    }
+                //    promptContext.AdditionalData["BuildErrors"] = sb.ToString();
+                //}
             }
         }
 
-        public async override Task PreCompletion(AgentState agentState)
+        public async override Task PrePrompt(AgentState agentState)
         {
             if (!agentState.TryGetGoal(out var currentGoal)) return;
 
@@ -102,6 +103,10 @@ namespace BizDevAgent.Flow
                 {
                     currentGoal.MarkDone();
                 }
+            }
+            else if (currentGoal.Spec.Key == "RefineFixPlan")
+            {
+                throw new NotImplementedException();
             }
         }
 
@@ -114,60 +119,82 @@ namespace BizDevAgent.Flow
 
             if (currentGoal.Spec.Key == "ModifyWorkingSet") // TODO gsemple: should get post load working so we can bind this goal as reference variable in ctor, or consider putting in goal data
             {
-                // Run the agent job and gather output
-                var researchJobOutput = string.Empty;
-                foreach (var snippet in snippets)
-                {
-                    if (snippet.LanguageId == "csharp")
-                    {
-                        var programmerShortTermMemory = agentState.ShortTermMemory as ProgrammerShortTermMemory;
-                        programmerShortTermMemory.WorkingSet = await programmerAgentState.RunAgentApiJob(snippet);
-                    }
-                }
+                //// Clear working set
+                //programmerAgentState.ProgrammerShortTermMemory.WorkingSetEntries.Clear();
 
-                var responseTokens = languageModelParser.ExtractResponseTokens(response);
-                if (snippets.Count == 0 && !responseTokens.Any(t => t.Contains("NoWorkingSet")))
-                {
-                    throw new Exception($"Invalid response, could not find snippet or token");
-                }
+                //// Run the agent job and gather output
+                //var researchJobOutput = string.Empty;
+                //foreach (var snippet in snippets)
+                //{
+                //    if (snippet.LanguageId == "csharp")
+                //    {
+                //        var programmerShortTermMemory = agentState.ShortTermMemory as ProgrammerShortTermMemory;
+                //        _targetRepositoryQuerySession.WorkingSetEntries.Clear();
+                //        await programmerAgentState.RunAgentApiJob(snippet);
 
-                if (!string.IsNullOrWhiteSpace(researchJobOutput))
-                {
-                    agentState.Observations.Add(new AgentObservation() { Description = researchJobOutput });
-                }
+                //        programmerAgentState.ProgrammerShortTermMemory.WorkingSetEntries.AddRange(_targetRepositoryQuerySession.WorkingSetEntries);
+                //        programmerAgentState.ProgrammerShortTermMemory.WorkingSet = await programmerAgentState.GenerateWorkingSet(programmerAgentState.ProgrammerShortTermMemory.WorkingSetEntries);
+                //    }
+                //}
+
+                //var responseTokens = languageModelParser.ExtractResponseTokens(response);
+                //if (snippets.Count == 0 && !responseTokens.Any(t => t.Contains("NoWorkingSet")))
+                //{
+                //    throw new Exception($"Invalid response, could not find snippet or token");
+                //}
+
+                //if (!string.IsNullOrWhiteSpace(researchJobOutput))
+                //{
+                //    agentState.Observations.Add(new AgentObservation() { Description = researchJobOutput });
+                //}
+
+                //currentGoal.MarkDone();
             }
             else if (currentGoal.Spec.Key == "GetWorkingSetPatch")
             {
-                var repositoryFilePatches = DiffUtils.ParseCustomPatches(response);
-                foreach(var repositoryFilePatch in repositoryFilePatches)
-                {
-                    var repoFile = _targetRepositoryQuerySession.FindFileInRepo(repositoryFilePatch.FileName);
-                    if (repoFile != null)
-                    {
-                        var patchedFileContents = DiffUtils.ApplyCustomPatch(repositoryFilePatch.Patch, repoFile.Contents);
-                        var localRepoPath = _targetRepositoryQuerySession.LocalRepoPath;
-                        var patchedFilePath = Path.Combine(localRepoPath, repoFile.FileName);
-                        patchedFileContents = DiffUtils.FormatRepositoryFile(patchedFileContents);
-                        File.WriteAllText(patchedFilePath, patchedFileContents);
-                    }
-                    else if (repoFile == null && repositoryFilePatch.IsNewFile)
-                    {
-                        var newFileContents = DiffUtils.NewFileCustomPatch(repositoryFilePatch.Patch);
-                        newFileContents = DiffUtils.FormatRepositoryFile(newFileContents);
-                        var addResult = await _targetRepositoryQuerySession.AddFileToRepo(repositoryFilePatch.FileName, newFileContents);
-                        if (addResult.IsFailed)
-                        {
-                            throw new Exception($"Failure to add file {addResult}");
-                        }
-                    }
-                }
+                //var repositoryFilePatches = DiffUtils.ParseCustomPatches(response);
+                //foreach(var repositoryFilePatch in repositoryFilePatches)
+                //{
+                //    var repoFile = _targetRepositoryQuerySession.FindFileInRepo(repositoryFilePatch.FileName);
+                //    if (repoFile != null)
+                //    {
+                //        var patchedFileContents = DiffUtils.ApplyCustomPatch(repositoryFilePatch.Patch, repoFile.Contents);
+                //        var localRepoPath = _targetRepositoryQuerySession.LocalRepoPath;
+                //        var patchedFilePath = Path.Combine(localRepoPath, repoFile.FileName);
+                //        patchedFileContents = DiffUtils.FormatRepositoryFile(patchedFileContents);
+                //        var updateResult = await _targetRepositoryQuerySession.UpdateFileInRepo(repoFile.FileName, patchedFileContents);
+                //        if (updateResult.IsFailed)
+                //        {
+                //            throw new Exception($"Failure to update file '{repoFile.FileName}' due to '{updateResult}'");
+                //        }
+                //    }
+                //    else if (repoFile == null && repositoryFilePatch.IsNewFile)
+                //    {
+                //        var newFileContents = DiffUtils.NewFileCustomPatch(repositoryFilePatch.Patch);
+                //        newFileContents = DiffUtils.FormatRepositoryFile(newFileContents);
+                //        var addResult = await _targetRepositoryQuerySession.AddFileToRepo(repositoryFilePatch.FileName, newFileContents);
+                //        if (addResult.IsFailed)
+                //        {
+                //            throw new Exception($"Failure to add file {addResult}");
+                //        }
+
+                //        // Add the file to working set
+                //        _targetRepositoryQuerySession.WorkingSetEntries.Clear();
+                //        _targetRepositoryQuerySession.PrintFileContents(addResult.Value.FileName);
+                //        programmerAgentState.ProgrammerShortTermMemory.WorkingSetEntries.AddRange(_targetRepositoryQuerySession.WorkingSetEntries);
+
+                //        // Figure out how to add the new file to working set
+                //        programmerAgentState.ProgrammerShortTermMemory.WorkingSet = await programmerAgentState.GenerateWorkingSet(programmerAgentState.ProgrammerShortTermMemory.WorkingSetEntries);
+                //    }
+                //}
+
+                //currentGoal.MarkDone();
             }
             else if (currentGoal.Spec.Key == "FixBuildErrors")
             {
                 var x = 3;
             }
 
-            currentGoal.MarkDone();
         }
     }
 }

@@ -6,6 +6,8 @@ For any lines that have been deleted include all original lines with <DELETED> n
 
 If you add any lines, include <ADDED> on that line but do not put any line number.  The line numbers only indicate the original file's line number, not the new one.
 
+If you edit any lines, include both a <DELETED> line for the old line, followed by an <ADDED> line.
+
 As an example, if I gave you this:
 
 @ORIG(GameDataStore.cs)

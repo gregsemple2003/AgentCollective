@@ -9,7 +9,7 @@ namespace BizDevAgent.Flow
     /// Process the response from the AI's research results.
     /// </summary>
     [TypeId("RefineStepPlanAgentGoal")]
-    public class RefineStepPlanAgentGoal : AgentGoal
+    public class RefineStepPlanAgentGoal : ProgrammerAgentGoal
     {
         private readonly RepositoryQuerySession _selfRepositoryQuerySession;
 
@@ -19,12 +19,12 @@ namespace BizDevAgent.Flow
             _selfRepositoryQuerySession = ProgrammerContext.Current.SelfRepositoryQuerySession;
         }
 
-        protected override bool ShouldRequestCompletionCustom(AgentState agentState)
+        protected override bool ShouldRequestPromptCustom(AgentState agentState)
         {
             return true;
         }
 
-        protected override void CustomizePromptCustom(AgentPromptContext promptContext, AgentState agentState)
+        protected override void PopulatePromptCustom(AgentPromptContext promptContext, AgentState agentState)
         {
             var programmerAgentState = (agentState as ProgrammerAgentState);
 

@@ -1,0 +1,28 @@
+I'm seeing the following compiler error, please choose the best solution given all available information:
+
+C:\Features\BizDevAgent_convertxml\BizDevAgent\DataStore\CompanyDataStore.cs(72,17): error CS0103: The name 'logger' does not exist in the current context [C:\Features\BizDevAgent_convertxml\BizDevAgent\BizDevAgent.csproj]
+
+I've encoded the file that this is happening to as a List<string>, with one entry per line.  Please show me how to modify the code by implementing the following class to modify the code to fix the error:
+
+using System.Collections.Generic;
+// add using declarations as necessary
+
+public class CodeLinesProcessor : ICodeLinesProcessor
+{
+    public void ModifyCode(ref List<string> codeLines)
+    {
+        // your implementation goes here
+    }
+}
+
+Please double-check that you are inserting on the correct lines, as this code must compile to prevent a possible disaster.
+
+Here is the code as a List<string>:
+
+{{{CodeAsList}}}
+
+FAQ
+
+What system are we using for logging?  
+
+Use the Microsoft extensions logging.

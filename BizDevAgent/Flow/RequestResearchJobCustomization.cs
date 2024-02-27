@@ -28,12 +28,12 @@ namespace BizDevAgent.Flow
             _repositoryQuerySession = ProgrammerContext.Current.TargetRepositoryQuerySession;
         }
 
-        public override bool ShouldRequestCompletion(AgentState agentState)
+        public override bool ShouldRequestPrompt(AgentState agentState)
         {
             return true;
         }
 
-        public override void CustomizePrompt(AgentPromptContext promptContext, AgentState agentState)
+        public override void PopulatePrompt(AgentPromptContext promptContext, AgentState agentState)
         {
             var programmerAgentState = (agentState as ProgrammerAgentState);
 

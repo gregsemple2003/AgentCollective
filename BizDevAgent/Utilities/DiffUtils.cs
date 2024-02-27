@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Text;
 
 namespace BizDevAgent.Utilities
 {
@@ -21,6 +22,85 @@ namespace BizDevAgent.Utilities
 
     public class DiffUtils
     {
+        public static string RemoveChunkMarkers(string contents)
+        {
+            // Define the pattern to match "// CHUNK <n>" lines
+            string pattern = @"// CHUNK \d+\s*\r?\n";
+            // Replace all occurrences of the pattern with an empty string
+            string cleanedContents = Regex.Replace(contents, pattern, "");
+            return cleanedContents;
+        }
+
+        public static string AddChunkMarkers(string code, int chunkSize)
+        {
+            // Split the input code into lines
+            string[] lines = code.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            StringBuilder modifiedCode = new StringBuilder();
+            int chunkCounter = 1; // Start chunk numbering from 1
+
+            // Insert the first chunk marker before any code
+            modifiedCode.AppendLine($"// CHUNK {chunkCounter}");
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                // Add the line to the modified code
+                modifiedCode.AppendLine(lines[i]);
+
+                // Check if it's time to insert a new chunk marker
+                // We also check if we're not at the end of the file to avoid adding a chunk marker at the very end
+                if ((i + 1) % chunkSize == 0 && (i + 1) < lines.Length)
+                {
+                    modifiedCode.AppendLine($"// CHUNK {++chunkCounter}");
+                }
+            }
+
+            return modifiedCode.ToString();
+        }
+
+        /// <summary>
+        /// Given a file that's already been divided into chunks via "// CHUNK x" comments, apply corrected chunks.
+        /// </summary>
+        public static string ApplyPatchWithChunks(string contents, List<string> correctedChunks)
+        {
+            string pattern = @"(// CHUNK \d+[\s\S]*?)(?=// CHUNK \d+|$)";
+            var matches = Regex.Matches(contents, pattern);
+            Dictionary<int, string> originalChunks = new Dictionary<int, string>();
+
+            // Extract original chunks and index them
+            foreach (Match match in matches)
+            {
+                string chunkHeader = match.Value.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)[0];
+                int chunkNumber = int.Parse(Regex.Match(chunkHeader, @"\d+").Value);
+                originalChunks[chunkNumber] = match.Value;
+            }
+
+            // Replace original chunks with corrected ones
+            foreach (string correctedChunk in correctedChunks)
+            {
+                string correctedChunkHeader = correctedChunk.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)[0];
+                int correctedChunkNumber = int.Parse(Regex.Match(correctedChunkHeader, @"\d+").Value);
+
+                if (originalChunks.ContainsKey(correctedChunkNumber))
+                {
+                    originalChunks[correctedChunkNumber] = correctedChunk;
+                }
+                else
+                {
+                    // Handle the case where a new chunk is introduced or there's an error in chunk numbering
+                    Console.WriteLine($"Warning: Corrected chunk {correctedChunkNumber} does not exist in original content and will be ignored.");
+                }
+            }
+
+            // Reconstruct the content with corrected chunks
+            string patchedContent = "";
+            foreach (var chunk in originalChunks)
+            {
+                patchedContent += chunk.Value + Environment.NewLine;
+            }
+
+            return patchedContent;
+        }
+
         /// <summary>
         /// Given a text response from an LLM containing file patches, parse them into a list of patches.
         /// </summary>
