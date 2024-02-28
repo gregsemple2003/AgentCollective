@@ -144,41 +144,49 @@ namespace Agent.Programmer
 
         private async Task StateMachineLoop(AgentState agentState)
         {
-            while(agentState.HasGoals()) 
+            try
             {
-                agentState.TryGetGoal(out var currentGoal);
-
-                await currentGoal.PrePrompt(agentState);
-
-                var transitionInfo = new TransitionInfo();
-                if (currentGoal.ShouldRequestPrompt(agentState))
+                while (agentState.HasGoals())
                 {
-                    currentGoal.IncrementPromptCount(1);
+                    agentState.TryGetGoal(out var currentGoal);
 
-                    var generatePromptResult = await GeneratePrompt(agentState);
-                    var prompt = generatePromptResult.Prompt;
-                    var chatResult = await _languageModelService.ChatCompletion(prompt);
-                    if (chatResult.ChatResult.Choices.Count == 0)
+                    await currentGoal.PrePrompt(agentState);
+
+                    var transitionInfo = new TransitionInfo();
+                    if (currentGoal.ShouldRequestPrompt(agentState))
                     {
-                        throw new InvalidOperationException("The chat API call failed to return a choice.");
+                        currentGoal.IncrementPromptCount(1);
+
+                        var generatePromptResult = await GeneratePrompt(agentState);
+                        var prompt = generatePromptResult.Prompt;
+                        var chatResult = await _languageModelService.ChatCompletion(prompt);
+                        if (chatResult.ChatResult.Choices.Count == 0)
+                        {
+                            throw new InvalidOperationException("The chat API call failed to return a choice.");
+                        }
+
+                        // Sensory memory is cleared prior to generating more observations in the response step.
+                        // Anything important must be synthesized to short-term memory.
+                        agentState.Observations.Clear();
+
+                        // Figure out which action it is taking.
+                        var response = chatResult.ChatResult.Choices[0].Message.TextContent;
+                        var processResult = await ProcessResponse(prompt, response, agentState);
+
+                        transitionInfo.ResponseTokens = processResult.ResponseTokens;
+                        transitionInfo.PromptContext = generatePromptResult.PromptContext;
                     }
 
-                    // Sensory memory is cleared prior to generating more observations in the response step.
-                    // Anything important must be synthesized to short-term memory.
-                    agentState.Observations.Clear();
+                    await currentGoal.PreTransition(agentState);
 
-                    // Figure out which action it is taking.
-                    var response = chatResult.ChatResult.Choices[0].Message.TextContent;
-                    var processResult = await ProcessResponse(prompt, response, agentState);
-
-                    transitionInfo.ResponseTokens = processResult.ResponseTokens;
-                    transitionInfo.PromptContext = generatePromptResult.PromptContext;
+                    // Transition to next step (push or pop)
+                    CheckTransition(agentState, transitionInfo);
                 }
-
-                await currentGoal.PreTransition(agentState);
-
-                // Transition to next step (push or pop)
-                CheckTransition(agentState, transitionInfo);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Unhandled exception: {ex}");
+                // Consider logging the exception to a file or logging system
             }
         }
 
