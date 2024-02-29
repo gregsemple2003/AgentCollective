@@ -28,7 +28,7 @@ namespace Agent.Programmer
             base.PopulatePromptCustom(promptContext, agentState);
         }
 
-        protected override async Task ProcessResponseCustom(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
+        protected override async Task ProcessResponseCustom(string prompt, string response, AgentState agentState, ILanguageParser languageModelParser)
         {
             if (!agentState.TryGetGoal(out var currentGoal)) return;
 

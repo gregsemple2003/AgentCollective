@@ -49,7 +49,7 @@ namespace Agent.Programmer
             }
         }
 
-        protected override Task ProcessResponseCustom(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
+        protected override Task ProcessResponseCustom(string prompt, string response, AgentState agentState, ILanguageParser languageModelParser)
         {
             return base.ProcessResponseCustom(prompt, response, agentState, languageModelParser);
         }

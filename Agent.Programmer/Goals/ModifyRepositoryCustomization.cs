@@ -103,7 +103,7 @@ namespace Agent.Programmer
             }
         }
 
-        public override async Task ProcessResponse(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
+        public override async Task ProcessResponse(string prompt, string response, AgentState agentState, ILanguageParser languageModelParser)
         {
             if (!agentState.TryGetGoal(out var currentGoal)) return;
 

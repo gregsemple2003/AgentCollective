@@ -12,7 +12,7 @@
     /// <summary>
     /// Abstracts how information such as code snippets are presented across different language models.
     /// </summary>
-    public interface IResponseParser
+    public interface ILanguageParser
     {
         List<string> ExtractResponseTokens(string response);
         List<ResponseSnippet> ExtractSnippets(string response);

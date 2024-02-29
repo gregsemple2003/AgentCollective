@@ -7,7 +7,7 @@ using Agent.Core;
 
 namespace Agent.Services
 {
-    public class OpenAiResponseParser : IResponseParser
+    public class OpenAiResponseParser : ILanguageParser
     {
         public List<string> ExtractResponseTokens(string response)
         {
@@ -81,7 +81,7 @@ namespace Agent.Services
         public Conversation Conversation { get; set; }
     }
 
-    public class LanguageModelService : Service
+    public class LanguageModelService : Service, ILanguageModel
     {
         private readonly OpenAIAPI _api;
         private readonly PromptResponseCacheDataStore _promptResponseCache;
@@ -99,7 +99,7 @@ namespace Agent.Services
             _lowTierModel = new OpenAI_API.Models.Model("gpt-3.5-turbo-0125") { OwnedBy = "openai" };
         }
 
-        public IResponseParser CreateResponseParser()
+        public ILanguageParser CreateLanguageParser()
         {
             return new OpenAiResponseParser();
         }
@@ -109,7 +109,8 @@ namespace Agent.Services
             return _lowTierModel;
         }
 
-        public async Task<ChatConversationResult> ChatCompletion(string prompt, Conversation conversation = null, bool allowCaching = true, OpenAI_API.Models.Model modelOverride = null)
+        // TODO gsemple: make this private, use the public interface
+        public async Task<ChatConversationResult> ChatCompletionInternal(string prompt, Conversation conversation = null, bool allowCaching = true, OpenAI_API.Models.Model modelOverride = null)
         {
             var temperature = 0.7;
             var model = modelOverride ?? _defaultModel;
@@ -166,5 +167,21 @@ namespace Agent.Services
             }
         }
 
+        public async Task<ChatCompletionResult> ChatCompletion(string prompt, bool allowCaching = true, ModelDescriptor? modelOverride = null)
+        {
+            OpenAI_API.Models.Model modelOverrideInternal = null;
+            if (modelOverride != null)
+            {
+                modelOverrideInternal = new OpenAI_API.Models.Model();
+                modelOverrideInternal.ModelID = modelOverride.Id;
+                modelOverrideInternal.OwnedBy = modelOverride.OwnerId;
+            }
+            var chatResultInternal = await ChatCompletionInternal(prompt, allowCaching: true, modelOverride: modelOverrideInternal);
+            return new ChatCompletionResult
+            {
+                Choices = chatResultInternal.ChatResult.Choices,
+                Usage = chatResultInternal.ChatResult.Usage
+            };
+        }
     }
 }

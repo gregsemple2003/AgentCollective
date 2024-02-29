@@ -33,7 +33,7 @@ namespace Agent.Programmer
             promptContext.AdditionalData["AgentApiSample"] = agentApiSample.Contents;
         }
 
-        protected override async Task ProcessResponseCustom(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
+        protected override async Task ProcessResponseCustom(string prompt, string response, AgentState agentState, ILanguageParser languageModelParser)
         {
             var snippets = languageModelParser.ExtractSnippets(response);
             var programmerAgentState = (agentState as ProgrammerAgentState);

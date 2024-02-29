@@ -26,7 +26,7 @@ namespace Agent.Programmer
             return true;
         }
 
-        public override Task ProcessResponse(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
+        public override Task ProcessResponse(string prompt, string response, AgentState agentState, ILanguageParser languageModelParser)
         {
             var snippets = languageModelParser.ExtractSnippets(response);
 

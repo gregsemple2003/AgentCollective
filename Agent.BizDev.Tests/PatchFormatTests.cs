@@ -96,7 +96,7 @@ namespace Agent.Tests
 
             // Extract the code and run it
             var response = result.ChatResult.ToString();
-            var responseParser = _languageModelService.CreateResponseParser();
+            var responseParser = _languageModelService.CreateLanguageParser();
             var snippets = responseParser.ExtractSnippets(response);
             foreach (var snippet in snippets)
             {
@@ -170,7 +170,7 @@ namespace Agent.Tests
 
             // Extract the code and run it
             var response = result.ChatResult.ToString();
-            var responseParser = _languageModelService.CreateResponseParser();
+            var responseParser = _languageModelService.CreateLanguageParser();
             var snippets = responseParser.ExtractSnippets(response);
             var correctedChunks = new List<string>();
             foreach (var snippet in snippets)

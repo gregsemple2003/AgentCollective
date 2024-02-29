@@ -95,7 +95,7 @@ namespace Agent.Services
 
                 string fileSummaryPrompt = $"Summarize this file '{File.FileName}' in 1-3 sentences (60 words max):\n\n{File.Contents}";
                 var chatModel = languageModelService.GetLowTierModel();
-                var chatResult = await languageModelService.ChatCompletion(fileSummaryPrompt, modelOverride: chatModel);
+                var chatResult = await languageModelService.ChatCompletionInternal(fileSummaryPrompt, modelOverride: chatModel);
                 Summary = $"{GetFullPath()}: {chatResult.ChatResult.ToString()}";
             }
             else if (Type == RepositoryNodeType.Directory)
@@ -112,7 +112,7 @@ namespace Agent.Services
                 }
 
                 var chatModel = languageModelService.GetLowTierModel();
-                var chatResult = await languageModelService.ChatCompletion(promptBuilder.ToString(), modelOverride: chatModel);
+                var chatResult = await languageModelService.ChatCompletionInternal(promptBuilder.ToString(), modelOverride: chatModel);
                 var childRelativePaths = ChildKeys.Select(key => Path.GetRelativePath(localRepoPath, key)).ToList();
                 Summary = $"{GetFullPath()}: {chatResult.ChatResult.ToString()}";
                 Summary += $"  Direct child files or directories: {string.Join(", ", childRelativePaths)}.";

@@ -23,7 +23,7 @@
             return Task.CompletedTask;
         }
 
-        public virtual Task ProcessResponse(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
+        public virtual Task ProcessResponse(string prompt, string response, AgentState agentState, ILanguageParser languageModelParser)
         {
             return Task.CompletedTask;
         }

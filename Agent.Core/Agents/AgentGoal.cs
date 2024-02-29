@@ -158,19 +158,19 @@ namespace Agent.Core
             return true;
         }
 
-        public async Task ProcessResponse(string prompt, string response, AgentState agentState, IResponseParser languageModelParser)
+        public async Task ProcessResponse(string prompt, string response, AgentState agentState, ILanguageParser languageParser)
         {
             if (Spec.Customization != null)
             {
-                await Spec.Customization.ProcessResponse(prompt, response, agentState, languageModelParser);
+                await Spec.Customization.ProcessResponse(prompt, response, agentState, languageParser);
             }
-            await ProcessResponseCustom(prompt, response, agentState, languageModelParser);
+            await ProcessResponseCustom(prompt, response, agentState, languageParser);
         }
 
         protected virtual bool ShouldRequestPromptCustom(AgentState agentState) { return false; }
         protected virtual Task PrePromptCustom(AgentState agentState) { return Task.CompletedTask; }
         protected virtual void PopulatePromptCustom(AgentPromptContext promptContext, AgentState agentState) { }
-        protected virtual Task ProcessResponseCustom(string prompt, string response, AgentState agentState, IResponseParser languageModelParser) { return Task.CompletedTask; }
+        protected virtual Task ProcessResponseCustom(string prompt, string response, AgentState agentState, ILanguageParser languageModelParser) { return Task.CompletedTask; }
         public virtual void OnEnter() { }
         public virtual async Task PreTransition(AgentState agentState) { }
     }
