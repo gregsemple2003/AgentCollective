@@ -9,7 +9,12 @@ namespace Agent.Core
         public string OwnerId { get; set; }
     }
 
-    // TODO gsemple: some leakage here using openai data structures
+    public class Usage
+    {
+        public int InputTokens { get; set; }
+        public int OutputTokens { get; set; }
+    }
+
     public class ChatCompletionResult
     {
         /// <summary>
@@ -22,7 +27,16 @@ namespace Agent.Core
         /// The usage statistics for the chat interaction
         /// </summary>
         [JsonProperty("usage")]
-        public ChatUsage Usage { get; set; }
+        public Usage Usage { get; set; }
+        public Conversation Conversation { get; set; }
+
+        public string ToString()
+        {
+            if (Choices == null) return string.Empty;
+            if (Choices.Count == 0) return string.Empty;
+
+            return string.Join(", ", Choices);
+        }
     }
 
     public interface ILanguageModel
@@ -30,6 +44,8 @@ namespace Agent.Core
         Task<ChatCompletionResult> ChatCompletion(string prompt, bool allowCaching = true, ModelDescriptor? modelOverride = null);
 
         ILanguageParser CreateLanguageParser();
+
+        ModelDescriptor GetLowTierModel();
 
     }
 }

@@ -1,9 +1,5 @@
-﻿using Agent.Agents;
-using Agent.DataStore;
-using Agent.Flow;
-using Agent.Jobs;
+﻿using Agent.Core;
 using Agent.Services;
-using Agent.Utilities;
 using Microsoft.Extensions.DependencyInjection;
 using Rystem.OpenAi;
 using System.Text;
@@ -25,7 +21,7 @@ namespace Agent.Tests
     {
         private ServiceProvider _serviceProvider;
         private AssetDataStore _assetDataStore;
-        private LanguageModelService _languageModelService;
+        private ILanguageModel _languageModelService;
         private VisualStudioService _visualStudioService;
 
         [OneTimeSetUp]
@@ -34,7 +30,7 @@ namespace Agent.Tests
             var serviceCollection = ServiceConfiguration.ConfigureServices();
             _serviceProvider = serviceCollection.BuildServiceProvider();
             _assetDataStore = _serviceProvider.GetService<AssetDataStore>();
-            _languageModelService = _serviceProvider.GetService<LanguageModelService>();
+            _languageModelService = _serviceProvider.GetService<OpenAiLanguageModel>();
             _visualStudioService = _serviceProvider.GetService<VisualStudioService>();
         }
 

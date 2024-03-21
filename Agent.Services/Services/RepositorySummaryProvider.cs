@@ -76,13 +76,13 @@ namespace Agent.Services
             return path;
         }
 
-        public async Task BuildSummary(LanguageModelService languageModelService, RepositorySummaryDataStore repositorySummaryDataStore, string localRepoPath)
+        public async Task BuildSummary(ILanguageModel languageModel, RepositorySummaryDataStore repositorySummaryDataStore, string localRepoPath)
         {
             // Build summary for children
             foreach (var child in Children)
             {
                 // TODO gsemple: parallelize
-                await child.BuildSummary(languageModelService, repositorySummaryDataStore, localRepoPath);
+                await child.BuildSummary(languageModel, repositorySummaryDataStore, localRepoPath);
             }
 
             Key = Path.Combine(localRepoPath, GetFullPath());
@@ -94,9 +94,9 @@ namespace Agent.Services
                 Console.WriteLine($"Summarizing file: {File.FileName}");
 
                 string fileSummaryPrompt = $"Summarize this file '{File.FileName}' in 1-3 sentences (60 words max):\n\n{File.Contents}";
-                var chatModel = languageModelService.GetLowTierModel();
-                var chatResult = await languageModelService.ChatCompletionInternal(fileSummaryPrompt, modelOverride: chatModel);
-                Summary = $"{GetFullPath()}: {chatResult.ChatResult.ToString()}";
+                var chatModel = languageModel.GetLowTierModel();
+                var chatResult = await languageModel.ChatCompletion(fileSummaryPrompt, modelOverride: chatModel);
+                Summary = $"{GetFullPath()}: {chatResult.ToString()}";
             }
             else if (Type == RepositoryNodeType.Directory)
             {
@@ -111,10 +111,10 @@ namespace Agent.Services
                     promptBuilder.AppendLine(child.Summary);
                 }
 
-                var chatModel = languageModelService.GetLowTierModel();
-                var chatResult = await languageModelService.ChatCompletionInternal(promptBuilder.ToString(), modelOverride: chatModel);
+                var chatModel = languageModel.GetLowTierModel();
+                var chatResult = await languageModel.ChatCompletion(promptBuilder.ToString(), modelOverride: chatModel);
                 var childRelativePaths = ChildKeys.Select(key => Path.GetRelativePath(localRepoPath, key)).ToList();
-                Summary = $"{GetFullPath()}: {chatResult.ChatResult.ToString()}";
+                Summary = $"{GetFullPath()}: {chatResult}";
                 Summary += $"  Direct child files or directories: {string.Join(", ", childRelativePaths)}.";
             }
 
@@ -125,10 +125,10 @@ namespace Agent.Services
     public class RepositorySummaryProvider
     {
         private readonly RepositoryQuerySession _repositoryQuerySession;
-        private readonly LanguageModelService _languageModelService;
+        private readonly ILanguageModel _languageModelService;
         private readonly RepositorySummaryDataStore _repositorySummaryDataStore;
 
-        public RepositorySummaryProvider(RepositoryQuerySession repositoryQuerySession, RepositorySummaryDataStore repositorySummaryDataStore, LanguageModelService languageModelService)
+        public RepositorySummaryProvider(RepositoryQuerySession repositoryQuerySession, RepositorySummaryDataStore repositorySummaryDataStore, ILanguageModel languageModelService)
         {
             _repositoryQuerySession = repositoryQuerySession;
             _repositorySummaryDataStore = repositorySummaryDataStore;

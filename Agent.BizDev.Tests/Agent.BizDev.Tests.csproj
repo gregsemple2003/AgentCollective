@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Agent.BizDev\Agent.BizDev.csproj" />
+    <ProjectReference Include="..\Agent.Main\Agent.Collective.csproj" />
   </ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\Agent.Services\Agent.Services.csproj" />

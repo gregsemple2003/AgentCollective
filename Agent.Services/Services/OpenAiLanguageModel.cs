@@ -75,28 +75,22 @@ namespace Agent.Services
         }
     }
 
-    public class ChatConversationResult
-    {
-        public ChatResult ChatResult { get; set; }
-        public Conversation Conversation { get; set; }
-    }
-
-    public class LanguageModelService : Service, ILanguageModel
+    public class OpenAiLanguageModel : Service, ILanguageModel
     {
         private readonly OpenAIAPI _api;
         private readonly PromptResponseCacheDataStore _promptResponseCache;
-        private readonly OpenAI_API.Models.Model _defaultModel;
-        private readonly OpenAI_API.Models.Model _lowTierModel;
+        private readonly ModelDescriptor _defaultModel;
+        private readonly ModelDescriptor _lowTierModel;
 
         private static string DataPath => Path.Combine(Paths.GetDataPath(), "PromptCacheDB");
 
-        public LanguageModelService(IConfiguration configuration)
+        public OpenAiLanguageModel(IConfiguration configuration)
         {
             var apiKey = configuration.GetValue<string>("OpenAiApiKey");
             _api = new OpenAIAPI(apiKey);
             _promptResponseCache = new PromptResponseCacheDataStore(DataPath);
-            _defaultModel = new OpenAI_API.Models.Model("gpt-4-0125-preview") { OwnedBy = "openai" };
-            _lowTierModel = new OpenAI_API.Models.Model("gpt-3.5-turbo-0125") { OwnedBy = "openai" };
+            _defaultModel = new ModelDescriptor { Id = "gpt-4-0125-preview", OwnerId = "openai" };
+            _lowTierModel = new ModelDescriptor { Id = "gpt-3.5-turbo-0125", OwnerId = "openai" };
         }
 
         public ILanguageParser CreateLanguageParser()
@@ -104,17 +98,25 @@ namespace Agent.Services
             return new OpenAiResponseParser();
         }
 
-        public OpenAI_API.Models.Model GetLowTierModel()
+        public ModelDescriptor GetLowTierModel()
         {
             return _lowTierModel;
         }
 
         // TODO gsemple: make this private, use the public interface
-        public async Task<ChatConversationResult> ChatCompletionInternal(string prompt, Conversation conversation = null, bool allowCaching = true, OpenAI_API.Models.Model modelOverride = null)
+        public async Task<ChatCompletionResult> ChatCompletionInternal(string prompt, Conversation conversation = null, bool allowCaching = true, ModelDescriptor? modelOverride = null)
         {
+            OpenAI_API.Models.Model modelInternal = null;
+            if (modelOverride != null)
+            {
+                var modelDescriptior = modelOverride ?? _defaultModel;
+                modelInternal = new OpenAI_API.Models.Model();
+                modelInternal.ModelID = modelDescriptior.Id;
+                modelInternal.OwnedBy = modelDescriptior.OwnerId;
+            }
+
             var temperature = 0.7;
-            var model = modelOverride ?? _defaultModel;
-            string cacheKey = $"{model.ModelID}_{temperature}_{prompt}";
+            string cacheKey = $"{modelInternal.ModelID}_{temperature}_{prompt}";
 
             var cachedResponses = allowCaching ? await _promptResponseCache.Get(cacheKey) : null;
             if (cachedResponses != null && cachedResponses.Count >= 1)
@@ -122,14 +124,11 @@ namespace Agent.Services
                 // Return a random cached response
                 var random = new Random();
                 var randomResponse = cachedResponses[random.Next(cachedResponses.Count)].Response;
-                return new ChatConversationResult
+                return new ChatCompletionResult
                 {
-                    ChatResult = new ChatResult
+                    Choices = new List<ChatChoice>
                     {
-                        Choices = new List<ChatChoice>
-                        {
-                            new ChatChoice { Message = new ChatMessage { TextContent = randomResponse } }
-                        }
+                        new ChatChoice { Message = new ChatMessage { TextContent = randomResponse } }
                     },
                     Conversation = null // TODO gsemple handle conversations with prompt cache??
                 };
@@ -140,7 +139,7 @@ namespace Agent.Services
                 {
                     // Call OpenAI API for a response
                     conversation = _api.Chat.CreateConversation();
-                    conversation.Model = model;
+                    conversation.Model = modelInternal;
                     conversation.RequestParameters.Temperature = temperature;
                 }
                 conversation.AppendUserInput(prompt);
@@ -153,15 +152,18 @@ namespace Agent.Services
                 if (isResponseUnique)
                 {
                     // Cache the new response if it's unique
-                    var newEntry = new PromptResponseCacheEntry { ModelId = model.ModelID, Temperature = temperature, Prompt = prompt, Response = message, TimeGenerated = DateTime.UtcNow };
+                    var newEntry = new PromptResponseCacheEntry { ModelId = modelInternal.ModelID, Temperature = temperature, Prompt = prompt, Response = message, TimeGenerated = DateTime.UtcNow };
                     var entries = cachedResponses ?? new List<PromptResponseCacheEntry>();
                     entries.Add(newEntry);
                     _promptResponseCache.Add(entries, shouldOverwrite: true);
                 }
 
-                return new ChatConversationResult
+                return new ChatCompletionResult
                 {
-                    ChatResult = result,
+                    Choices = new List<ChatChoice>
+                    {
+                        new ChatChoice { Message = new ChatMessage { TextContent = message } }
+                    },
                     Conversation = conversation
                 };
             }
@@ -169,19 +171,7 @@ namespace Agent.Services
 
         public async Task<ChatCompletionResult> ChatCompletion(string prompt, bool allowCaching = true, ModelDescriptor? modelOverride = null)
         {
-            OpenAI_API.Models.Model modelOverrideInternal = null;
-            if (modelOverride != null)
-            {
-                modelOverrideInternal = new OpenAI_API.Models.Model();
-                modelOverrideInternal.ModelID = modelOverride.Id;
-                modelOverrideInternal.OwnedBy = modelOverride.OwnerId;
-            }
-            var chatResultInternal = await ChatCompletionInternal(prompt, allowCaching: true, modelOverride: modelOverrideInternal);
-            return new ChatCompletionResult
-            {
-                Choices = chatResultInternal.ChatResult.Choices,
-                Usage = chatResultInternal.ChatResult.Usage
-            };
+            return await ChatCompletionInternal(prompt, allowCaching: true, modelOverride: modelOverride);
         }
     }
 }

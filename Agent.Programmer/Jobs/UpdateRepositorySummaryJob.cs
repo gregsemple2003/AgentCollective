@@ -1,4 +1,5 @@
-﻿using Agent.Services;
+﻿using Agent.Core;
+using Agent.Services;
 
 namespace Agent.Programmer
 {
@@ -10,11 +11,11 @@ namespace Agent.Programmer
         private readonly RepositorySummaryDataStore _repositorySummaryDataStore;
         private readonly CodeAnalysisService _codeAnalysisService;
         private readonly RepositoryQuerySession _repositoryQuerySession;
-        private readonly LanguageModelService _languageAgent;
+        private readonly ILanguageModel _languageAgent;
 
         private const int RequiredSummaryVerison = 1;
 
-        public UpdateRepositorySummaryJob(RepositorySummaryDataStore repositorySummaryDataStore, CodeAnalysisService codeAnalysisService, RepositoryQueryService repositoryQueryService, LanguageModelService languageModelService, string localRepoPath) 
+        public UpdateRepositorySummaryJob(RepositorySummaryDataStore repositorySummaryDataStore, CodeAnalysisService codeAnalysisService, RepositoryQueryService repositoryQueryService, OpenAiLanguageModel languageModelService, string localRepoPath) 
         {
             _repositorySummaryDataStore = repositorySummaryDataStore;
             _codeAnalysisService = codeAnalysisService;

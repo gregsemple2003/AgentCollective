@@ -13,6 +13,8 @@ namespace Agent.Main
             // Build the service provider
             var serviceCollection = ServiceConfiguration.ConfigureServices();
             var serviceProvider = serviceCollection.BuildServiceProvider();
+
+            // Fetch required services
             var loggerFactory = serviceProvider.GetRequiredService<LoggerFactory>();
             var gameDataStore = serviceProvider.GetRequiredService<GameDataStore>();
             var gameSeriesDataStore = serviceProvider.GetRequiredService<GameSeriesDataStore>();
@@ -24,7 +26,8 @@ namespace Agent.Main
             var visualStudioService = serviceProvider.GetRequiredService<VisualStudioService>();
             var codeAnalysisService = serviceProvider.GetRequiredService<CodeAnalysisService>();
             var repositoryQueryService = serviceProvider.GetRequiredService<RepositoryQueryService>();
-            var languageModelService = serviceProvider.GetRequiredService<LanguageModelService>();
+            var languageModelService = serviceProvider.GetRequiredService<OpenAiLanguageModel>();
+            var anthropicLanguageModel = serviceProvider.GetRequiredService<AnthropicLanguageModel>();
             var gitService = serviceProvider.GetRequiredService<GitService>();
             var assetDataStore = serviceProvider.GetRequiredService<AssetDataStore>();
 
@@ -43,7 +46,7 @@ namespace Agent.Main
             // Run jobs until we're told to exit
             //await jobRunner.RunJob(new UpdateRepositorySummaryJob(repositorySummaryDataStore, codeAnalysisService, repositoryQueryService, languageModelService, @"c:\Features\BizDevAgent_convertxml"));
 
-            await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitService, repositoryQueryService, codeAnalysisService, assetDataStore, languageModelService, visualStudioService, serviceProvider, jobRunner, loggerFactory)
+            await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitService, repositoryQueryService, assetDataStore, languageModelService, anthropicLanguageModel, serviceProvider, loggerFactory)
             {
                 GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
                 LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",

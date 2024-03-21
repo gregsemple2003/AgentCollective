@@ -35,36 +35,26 @@ namespace Agent.Programmer
 
         private readonly GitService _gitService;
         private readonly RepositoryQueryService _repositoryQueryService;
-        private readonly CodeAnalysisService _codeAnalysisService;
         private readonly AssetDataStore _assetDataStore;
-        private readonly LanguageModelService _languageModelService;
-        private readonly ILanguageParser _languageModelParser;
-        private readonly VisualStudioService _visualStudioService;
+        private readonly ILanguageModel _languageModelService;
+        private readonly ILanguageModel _planningLanguageModel;
         private readonly IServiceProvider _serviceProvider;
-        private readonly AgentGoalSpec _doneGoal;
-        private readonly PromptAsset _goalPrompt;
         private readonly RepositoryQuerySession _selfRepositoryQuerySession;
-        private readonly JobRunner _jobRunner;
         private readonly ILogger _logger;
 
         private RepositoryQuerySession _targetRepositoryQuerySession;
 
-        public ProgrammerImplementFeatureJob(GitService gitService, RepositoryQueryService repositoryQueryService, CodeAnalysisService codeAnalysisService, AssetDataStore assetDataStore, LanguageModelService languageModelService, VisualStudioService visualStudioService, IServiceProvider serviceProvider, JobRunner jobRunner, LoggerFactory loggerFactory)
+        public ProgrammerImplementFeatureJob(GitService gitService, RepositoryQueryService repositoryQueryService, AssetDataStore assetDataStore, OpenAiLanguageModel languageModelService, AnthropicLanguageModel anthropicLanguageModel, IServiceProvider serviceProvider, LoggerFactory loggerFactory)
         {
             _gitService = gitService;
             _repositoryQueryService = repositoryQueryService;
-            _codeAnalysisService = codeAnalysisService;
             _assetDataStore = assetDataStore;
             _languageModelService = languageModelService;
-            _visualStudioService = visualStudioService;
+            _planningLanguageModel = anthropicLanguageModel;
             _serviceProvider = serviceProvider;
-            _jobRunner = jobRunner;
             _logger = loggerFactory.CreateLogger("Agent");
 
-            _languageModelParser = _languageModelService.CreateLanguageParser();
             _selfRepositoryQuerySession = _repositoryQueryService.CreateSession(Paths.GetSourceControlRootPath());
-            _goalPrompt = _assetDataStore.GetHardRef<PromptAsset>("Default_Goal");
-            _doneGoal = _assetDataStore.GetHardRef<AgentGoalSpec>("DoneGoal");
         }
 
         public AgentState CreateAgent(string targetLocalRepoPath)
@@ -100,9 +90,13 @@ namespace Agent.Programmer
                 throw new InvalidOperationException("Failed to revert all local changes");
             }
 
+            var chatResult = await _planningLanguageModel.ChatCompletion("Hello how are you?  Do you feel like being an agent today?");
+
             // Run the machine on the goal hierarchy until done
             var agentState = CreateAgent(LocalRepoPath);
-            var agentOptions = new AgentOptions { DoneGoal = _doneGoal, GoalPrompt = _goalPrompt };
+            var goalPrompt = _assetDataStore.GetHardRef<PromptAsset>("Default_Goal");
+            var doneGoal = _assetDataStore.GetHardRef<AgentGoalSpec>("DoneGoal");
+            var agentOptions = new AgentOptions { DoneGoal = doneGoal, GoalPrompt = goalPrompt };
             var agentExecutor = new AgentExecutor(agentState, agentOptions, _languageModelService, _logger, _serviceProvider);
             agentExecutor.CustomizePromptContext += (promptContext, agentState) =>
             {
