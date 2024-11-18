@@ -7,6 +7,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="CsvHelper" Version="33.0.1" />
+  </ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\Agent.BizDev\Agent.BizDev.csproj" />
 	</ItemGroup>
