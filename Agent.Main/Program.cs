@@ -3,6 +3,7 @@ using Agent.Programmer;
 using Agent.Services;
 using Agent.BizDev;
 using Microsoft.Extensions.DependencyInjection;
+using GrafanaServiceExample;
 
 namespace Agent.Main
 {
@@ -43,20 +44,36 @@ namespace Agent.Main
 
             var ws = new System.Net.WebSockets.ClientWebSocket();
 
+            //// GCP query to get VM startup times
+            //var gcpOperationsService = new GcpOperationsService("lastepoch-agones-prod");
+            //var insertOperations = await gcpOperationsService.GetInsertOperationsAsync(6);
+            //gcpOperationsService.QueryStartupTimesByZone(insertOperations);
+
+            // Grafana query to fetch information
+            //var grafanaService = new GrafanaService("https://last-epoch.gamefabric.dev/monitoring", "secret");
+            var grafanaService = new GrafanaService();
+            List<string> armadaSets = new List<string>
+            {
+                "prod-a",
+                "prod-a-towns",
+            };
+            var playerQueueConfigService = new PlayerQueueConfigService(grafanaService, armadaSets);
+            await playerQueueConfigService.UpdateResourceRequests(DateTime.UtcNow.AddDays(-1));
+            //await playerQueueConfigService.GetPeakAllocationRatesByRegion();
             // Run jobs until we're told to exit
             //await jobRunner.RunJob(new UpdateRepositorySummaryJob(repositorySummaryDataStore, codeAnalysisService, repositoryQueryService, languageModelService, @"c:\Features\BizDevAgent_convertxml"));
 
-            await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitService, repositoryQueryService, assetDataStore, languageModelService, anthropicLanguageModel, serviceProvider, loggerFactory)
-            {
-                GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
-                LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",
-                //FeatureSpecification = @"Convert any data load or saving functionality from JSON to XML.",
-                FeatureSpecification = @"Convert console logging to use the Logger class.",
-                BuildCommand = new BatchFileBuildCommand
-                {
-                    ScriptPath = "Build.bat"
-                }
-            });
+            //await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitService, repositoryQueryService, assetDataStore, languageModelService, anthropicLanguageModel, serviceProvider, loggerFactory)
+            //{
+            //    GitRepoUrl = "https://github.com/gregsemple2003/BizDevAgent.git",
+            //    LocalRepoPath = @"c:\Features\BizDevAgent_convertxml",
+            //    //FeatureSpecification = @"Convert any data load or saving functionality from JSON to XML.",
+            //    FeatureSpecification = @"Convert console logging to use the Logger class.",
+            //    BuildCommand = new BatchFileBuildCommand
+            //    {
+            //        ScriptPath = "Build.bat"
+            //    }
+            //});
             //await jobRunner.RunJob(new ProgrammerResearchJob(visualStudioService, serviceProvider, jobRunner));
             //await jobRunner.RunJob(new ProgrammerModifyCode(gitService, diffFileContents));
             //await jobRunner.RunJob(new ResearchCompanyJob(companyDataStore, serviceProvider.GetRequiredService<WebSearchAgent>()));
