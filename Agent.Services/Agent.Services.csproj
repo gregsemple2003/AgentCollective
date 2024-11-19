@@ -8,6 +8,7 @@
 	
 	<ItemGroup>
 		<ProjectReference Include="..\Agent.Core\Agent.Core.csproj" />
+		<ProjectReference Include="..\ThirdParty\AssetsTools.NET\AssetTools.NET\AssetsTools.NET.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
