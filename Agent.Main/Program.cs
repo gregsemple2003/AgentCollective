@@ -50,7 +50,6 @@ namespace Agent.Main
             //gcpOperationsService.QueryStartupTimesByZone(insertOperations);
 
             //// Grafana query to fetch information
-            ////var grafanaService = new GrafanaService("https://last-epoch.gamefabric.dev/monitoring", "your service key");
             //var grafanaService = new GrafanaService();
             //List<string> armadaSets = new List<string>
             //{
