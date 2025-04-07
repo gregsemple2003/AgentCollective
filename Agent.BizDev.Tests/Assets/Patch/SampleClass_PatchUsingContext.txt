@@ -1,0 +1,30 @@
+public class SampleClass
+{
+    public void MethodA()
+    {
+        Console.WriteLine("Method A start");
+        Console.WriteLine("Doing something");
+        Console.WriteLine("Method A end");
+    }
+
+    public void MethodB()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            Console.WriteLine($"Iteration {i}");
+        }
+    }
+
+    public void MethodC()
+    {
+        int x = 10;
+        if (x > 5)
+        {
+            Console.WriteLine("x is greater than 5");
+        }
+        else
+        {
+            Console.WriteLine("x is 5 or less");
+        }
+    }
+}

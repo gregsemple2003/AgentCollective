@@ -4,7 +4,7 @@
     {
         public static string GetTestDataFolder()
         {
-            return Path.Combine(Agent.Utilities.Paths.GetProjectPath(), "Data");
+            return Path.Combine(Agent.Core.Paths.GetProjectPath(), "Data");
         }
     }
 }

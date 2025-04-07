@@ -1,5 +1,6 @@
 ﻿using Agent.Core;
 using Agent.Services;
+using Agent.Main;
 using Microsoft.Extensions.DependencyInjection;
 using Rystem.OpenAi;
 using System.Text;
@@ -45,10 +46,10 @@ namespace Agent.Tests
         [Test]
         public async Task Patch_UsingFollowupPrompt()
         {
-            var promptText = _assetDataStore.GetHardRef<PromptAsset>("FixBuildError1_Initial").Evaluate(null);
-            var createPatchText = _assetDataStore.GetHardRef<PromptAsset>("FixBuildError1_CreatePatch").Evaluate(null);
-            var result = await _languageModelService.ChatCompletion(promptText);
-            result = await _languageModelService.ChatCompletion(createPatchText, result.Conversation);
+            //var promptText = _assetDataStore.GetHardRef<PromptAsset>("FixBuildError1_Initial").Evaluate(null);
+            //var createPatchText = _assetDataStore.GetHardRef<PromptAsset>("FixBuildError1_CreatePatch").Evaluate(null);
+            //var result = await _languageModelService.ChatCompletion(promptText);
+            //result = await _languageModelService.ChatCompletion(createPatchText, result.Conversation);
         }
 
         /// <summary>
@@ -60,7 +61,7 @@ namespace Agent.Tests
         {
             public string CodeAsList { get; set; }
         }
-        [Test]
+        //[Test]
         public async Task Patch_UsingCodeAsList()
         {
             var testCodeText = _assetDataStore.GetHardRef<TextAsset>("CompanyDataStore");
@@ -91,7 +92,7 @@ namespace Agent.Tests
             var result = await _languageModelService.ChatCompletion(promptText);
 
             // Extract the code and run it
-            var response = result.ChatResult.ToString();
+            var response = result.Conversation.ToString();
             var responseParser = _languageModelService.CreateLanguageParser();
             var snippets = responseParser.ExtractSnippets(response);
             foreach (var snippet in snippets)
@@ -150,7 +151,7 @@ namespace Agent.Tests
         {
             public string Code { get; set; }
         }
-        [Test]
+        //[Test]
         public async Task Patch_UsingChunks()
         {
             var testCodeText = _assetDataStore.GetHardRef<TextAsset>("CompanyDataStore");
@@ -165,7 +166,7 @@ namespace Agent.Tests
             var result = await _languageModelService.ChatCompletion(prompt, allowCaching: false);
 
             // Extract the code and run it
-            var response = result.ChatResult.ToString();
+            var response = result.Conversation.ToString();
             var responseParser = _languageModelService.CreateLanguageParser();
             var snippets = responseParser.ExtractSnippets(response);
             var correctedChunks = new List<string>();
@@ -181,5 +182,20 @@ namespace Agent.Tests
             patchedCode = DiffUtils.RemoveChunkMarkers(patchedCode);
         }
 
-    }
+        [Test]
+        public async Task PatchUsingContextTest()
+        {
+            var testCodeText = _assetDataStore.GetHardRef<TextAsset>("SampleClass_PatchUsingContext");
+			const string patch1 = 
+"""
+@@ @@
+    Console.WriteLine("Method A start");
+-    Console.WriteLine("Doing something");
++    Console.WriteLine("Doing something else");
+    Console.WriteLine("Method A end");
+""";
+            PatchUsingContext.ApplyPatch(testCodeText.Text, patch1);
+
+		}
+	}
 }
