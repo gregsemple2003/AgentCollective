@@ -49,26 +49,27 @@ namespace Agent.Main
             //var insertOperations = await gcpOperationsService.GetInsertOperationsAsync(6);
             //gcpOperationsService.QueryStartupTimesByZone(insertOperations);
 
-            //// Grafana query to fetch information
-            //var grafanaService = new GrafanaService();
-            //List<string> armadaSets = new List<string>
-            //{
-            //    "prod-a",
-            //    "prod-a-towns",
-            //};
-            //var playerQueueConfigService = new PlayerQueueConfigService(grafanaService, armadaSets);
-            //await playerQueueConfigService.UpdateResourceRequests(DateTime.UtcNow.AddDays(-1));
-            ////await playerQueueConfigService.GetPeakAllocationRatesByRegion();
-            //// Run jobs until we're told to exit
-            ////await jobRunner.RunJob(new UpdateRepositorySummaryJob(repositorySummaryDataStore, codeAnalysisService, repositoryQueryService, languageModelService, @"c:\Features\BizDevAgent_convertxml"));
+            // Grafana query to fetch information
+            var grafanaService = new GrafanaService();
+            List<string> armadaSets = new List<string>
+            {
+                "prod-a",
+                "prod-a-towns",
+            };
+            var playerQueueConfigService = new PlayerQueueConfigService(grafanaService, armadaSets);
+            await playerQueueConfigService.UpdateResourceRequests(DateTime.UtcNow.AddDays(-1));
+            playerQueueConfigService.WriteClustersToCsv(fileName: "clusters.csv");
+            //await playerQueueConfigService.GetPeakAllocationRatesByRegion();
+            // Run jobs until we're told to exit
+            //await jobRunner.RunJob(new UpdateRepositorySummaryJob(repositorySummaryDataStore, codeAnalysisService, repositoryQueryService, languageModelService, @"c:\Features\BizDevAgent_convertxml"));
 
 
-            string inputAssetsPath = @"C:\LE_Server_Linux\LastEpoch_Data";
-            string outputAssetsPath = @"C:\LE_Server_Linux\LastEpoch_Data_Stripped";
-            string classDataPath = Path.Combine(@"C:\Backup", "classdata.tpk");
-            UnityAssetService assetService = new UnityAssetService(classDataPath, inputAssetsPath, outputAssetsPath);
-            assetService.ProcessAllAssets();
-            //string assetsFilePath = Path.Combine(inputAssetsPath, "sharedassets14.assets");
+            //string inputAssetsPath = @"C:\LE_Server_Linux\LastEpoch_Data";
+            //string outputAssetsPath = @"C:\LE_Server_Linux\LastEpoch_Data_Stripped";
+            //string classDataPath = Path.Combine(@"C:\Backup", "classdata.tpk");
+            //UnityAssetService assetService = new UnityAssetService(classDataPath, inputAssetsPath, outputAssetsPath);
+            //assetService.ProcessAllAssets();
+            ////string assetsFilePath = Path.Combine(inputAssetsPath, "sharedassets14.assets");
 
             //await jobRunner.RunJob(new ProgrammerImplementFeatureJob(gitService, repositoryQueryService, assetDataStore, languageModelService, anthropicLanguageModel, serviceProvider, loggerFactory)
             //{
