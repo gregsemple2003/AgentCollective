@@ -120,18 +120,30 @@ namespace Agent.Services
             //await GetPodCountsByNode();
         }
 
-        public async Task UpdateClusterAllocatedCpu()
+		/// <summary>
+		/// For each cluster we sample the average CPU usage rate of the allocated pods.
+		///    1. Determines the time where peak allocated replicas occurs.  This is the best time for us to sample CPU usage.
+		///    2. Uses a Prometheus query to get the average CPU usage rate of the top N pods (where N = allocated replica count).
+		///    3. Stores the result per cluster in PeakAllocatedCpuUtilisation.        
+        /// We don't have a simple way to just query CPU usage of only allocated pods, so we use topk here as a workaround.
+		/// </summary>
+		public async Task UpdateClusterAllocatedCpu()
         {
             foreach (var cluster in _clusters.Values)
             {
                 await UpdateClusterAllocatedCpu(cluster.Name, TimeSpan.FromMinutes(20));
             }
-
-            var csv = ExportListToCsv(_clusters.Values.ToList());
-            Console.WriteLine(csv);
         }
 
-        public async Task UpdateClusterAllocatedCpu(string clusterName, TimeSpan timeAroundPeak)
+        public async Task WriteClustersToCsv(string fileName)
+        {
+			var csv = ExportListToCsv(_clusters.Values.ToList());
+			Console.WriteLine(csv);
+
+            File.WriteAllText(fileName, csv);
+		}
+
+		public async Task UpdateClusterAllocatedCpu(string clusterName, TimeSpan timeAroundPeak)
         {
             // Check that the cluster exists
             if (!TryGetClusterByName(clusterName, out var cluster))
@@ -209,7 +221,13 @@ namespace Agent.Services
             Console.WriteLine(csv);
         }
 
-        public async Task UpdateClusterReplicaCounts()
+		/// <summary>
+		/// Queries Grafana with a Prometheus data source for time-series data on 'allocated' and 'ready' replica 
+		/// counts for a specific Agones fleet across all known clusters.  This data is stored as a time-series
+		/// in AllocatedReplicaCounts and ReadyReplicaCounts.
+		/// </summary>
+		/// <returns></returns>
+		public async Task UpdateClusterReplicaCounts()
         {
             // Query each worker node for cpu/memory stats
             var datasourceName = "Prometheus";
@@ -308,7 +326,12 @@ namespace Agent.Services
             }
         }
 
-        public async Task UpdateClusterArmadaInfo()
+		/// <summary>
+		/// Queries Grafana with a Prometheus datasource to fetch basic metadata about the clusters in our system,
+		/// like Name, Type, Region, Environment.  It normalizes cluster names (since in some places "-last-epoch"
+        /// is added to the hostname, other places not).
+		/// <summary>
+		public async Task UpdateClusterArmadaInfo()
         {
             // Query each "site" (aka cluster) along with associated region info
             var datasourceName = "Prometheus";
