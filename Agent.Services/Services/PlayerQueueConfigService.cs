@@ -7,6 +7,7 @@ using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Globalization;
 using System.Reflection;
+using System.Drawing;
 
 namespace Agent.Services
 {
@@ -148,15 +149,15 @@ namespace Agent.Services
         private DateTime _startTime;
 		private string _prometheusBaseUrl;
 		private string _prometheusToken;
-		private string _outputPath;
+		private string _rootPath;
 
 
-		public PlayerQueueConfigService(PrometheusService prometheusService, List<string> armadaSets, string outputPath)
+		public PlayerQueueConfigService(PrometheusService prometheusService, List<string> armadaSets, string rootPath)
 		{
 			_prometheusService = prometheusService;
 			_clusters = new Dictionary<string, Cluster>();
 			_armadaSets = armadaSets;
-			_outputPath = outputPath;
+			_rootPath = rootPath;
 		}
 
 		/// <summary>
@@ -195,93 +196,149 @@ namespace Agent.Services
 			public double CpuUsage { get; set; }
 		}
 
-		public async Task<Dictionary<string, double>> GetGlobalWeightedCpuAsync(DateTime startTime, DateTime endTime, TimeSpan step)
+		public async Task<Dictionary<string, double>> GetGlobalWeightedCpuAsync(
+			DateTime startTime,
+			DateTime endTime,
+			TimeSpan step,
+			TimeSpan slice
+		)
 		{
 			await UpdateClusterArmadaInfo(startTime, endTime);
-
 			await UpdateClusterReplicaCounts(startTime, endTime);
 
-			var all = new List<CpuSample>();
+			var all = new List<CpuSample>();          // (region, model) rows
 
-			foreach (var kvp in _clusters)
+			foreach (var cluster in _clusters.Values)
 			{
-				var cluster = kvp.Value;
-
-				// We only want bare metal
-				if (!cluster.IsBareMetal)
-				{
-					continue;
-				}
+				if (!cluster.IsBareMetal) continue;
 
 				if (cluster.AllocatedReplicaCounts.Count > 0)
 				{
-					all.AddRange(await QueryModelCpuAsync(cluster.Name, startTime, endTime, step));
+					all.AddRange(await QueryRegionModelCpuAsync(cluster.Name, startTime, endTime, step, slice));
 				}
 			}
 
-			DumpListToCsvFile(all, Path.Combine(_outputPath, "server_cpu.csv"));
+			// raw per‑cluster / per‑region data
+			DumpListToCsvFile(all, Path.Combine(_rootPath, "server_cpu_by_region.csv"));
 
-			var modelToCpu = all
-				.GroupBy(x => x.ModelName)
-				.ToDictionary(
-					g => g.Key,
-					g =>
-					{
-						var totServers = g.Sum(s => s.ClusterServerCount);
-						return totServers == 0 ? 0 : g.Sum(s => s.AvgCpuPerServer * s.ClusterServerCount) / totServers;
-					});
-
-			var summaryRows = modelToCpu
-				.Select(kvp => new { ModelName = kvp.Key, WeightedCpu = kvp.Value })
-				.OrderBy(s => s.ModelName)
+			// reduce the time‑series to **one row per cluster / region / model**
+			var perCluster = all
+				.GroupBy(r => (r.ClusterName, r.Region, r.ModelName))
+				.Select(g => g
+					.OrderByDescending(r => r.SampleTimeUtc)    // newest sample first
+					.First())                                   // keep ONE row
 				.ToList();
 
-			DumpListToCsvFile(summaryRows, Path.Combine(_outputPath, "model_cpu.csv"));
+			// weighted average per (region, model)
+			var regionModelCpu = perCluster
+				.GroupBy(r => (r.Region, r.ModelName))
+				.ToDictionary(
+					g => $"{g.Key.Region}|{g.Key.ModelName}",
+					g =>
+					{
+						var tot = g.Sum(s => s.ClusterServerCount);
+						return tot == 0
+							   ? 0
+							   : g.Sum(s => s.AvgCpuPerServer * s.ClusterServerCount) / tot;
+					});
 
-			return modelToCpu;
+			// summary CSV with separate Region / ModelName columns
+			var summaryRows = regionModelCpu
+				.Select(kvp =>
+				{
+					var parts = kvp.Key.Split('|', 2);   // "region|model"
+					return new
+					{
+						Region = parts[0],
+						ModelName = parts.Length > 1 ? parts[1] : "",
+						WeightedCpu = kvp.Value
+					};
+				})
+				.OrderBy(r => r.Region)
+				.ThenBy(r => r.ModelName)
+				.ToList();
+
+			DumpListToCsvFile(summaryRows, Path.Combine(_rootPath, "model_region_cpu.csv"));
+
+			return regionModelCpu;          // key = "region|model", value = weighted CPU
 		}
+
 
 		public sealed record CpuSample(
 			string Region,
 			string ModelName,
 			double AvgCpuPerServer,
 			int ClusterServerCount,
-			string ClusterName
+			string ClusterName,
+			DateTime SampleTimeUtc
 		);
 
-		private async Task<List<CpuSample>> QueryModelCpuAsync(string clusterName, DateTime startUtc, DateTime endUtc, TimeSpan step)
+		private async Task<List<CpuSample>> QueryRegionModelCpuAsync(
+				string clusterName,
+				DateTime startUtc,
+				DateTime endUtc,
+				TimeSpan step,
+				TimeSpan slice
+		)
 		{
-			var promql = await File.ReadAllTextAsync("C:\\Users\\Admin\\Documents\\Projects\\AgentCollective\\Agent.Services\\Config\\ModelCpuWithCount.promql");
+			Console.WriteLine($"QueryRegionModelCpuAsync: clusterName={clusterName}, startUtc={startUtc}, endUtc={endUtc}, step={step}");
+
+			// load template that contains <CLUSTERNAME>
+			var promptPath = Path.Combine(_rootPath, "Config/RegionModelCpu.promql");
+			var promql = await File.ReadAllTextAsync(promptPath);
 			var query = promql.Replace("<CLUSTERNAME>", clusterName);
 
-			var dataFrames = await _prometheusService.ExecuteQueryRangeAsync(startUtc, endUtc, query, step);
-
-			if (dataFrames.Count == 0)
-			{
-				var x = 3; // TODO gsemple: filter this case
-			}
+			var frames = await _prometheusService.ExecuteQueryRangeSlicedAsync(startUtc, endUtc, query, step, slice);
 
 			var samples = new List<CpuSample>();
 
-			foreach (var modelGroup in dataFrames.GroupBy(f => f.Dimensions["model_name"]))
+			foreach (var group in frames.GroupBy(f => (
+						 region: f.Dimensions["region"],
+						 model: f.Dimensions["model_name"],
+						 stat: f.Dimensions["stat"])))
 			{
-				var countSeries = modelGroup.FirstOrDefault(f => f.Dimensions["stat"] == "count");
-				var avgSeries = modelGroup.FirstOrDefault(f => f.Dimensions["stat"] == "avg");
+				double windowAvg = group.SelectMany(f => f.Series).Average();
+				DateTime latestTs = group.SelectMany(f => f.Timestamps).Max();   // latest in slice
 
-				if (countSeries == null || avgSeries == null)
-				{
-					continue;
-				}
-
-				double avgCpu = avgSeries.Series.Average();
-				int serverCount = (int)Math.Round(countSeries.Series.Average());
-
-				samples.Add(new CpuSample(ModelName: modelGroup.Key, AvgCpuPerServer: avgCpu, ClusterServerCount: serverCount, ClusterName: clusterName));
+				samples.Add(new CpuSample(
+					Region: group.Key.region,
+					ModelName: group.Key.model,
+					AvgCpuPerServer: group.Key.stat == "avg" ? windowAvg : 0,
+					ClusterServerCount: group.Key.stat == "count" ? (int)windowAvg : 0,
+					ClusterName: clusterName,
+					SampleTimeUtc: latestTs
+				));
 			}
 
-			return samples;
-		}
+			// collapse count+avg rows into a single row per (region,model)
+			// collapse avg+count rows into ONE sample per (region, model)
+			return samples
+				.GroupBy(s => (s.Region, s.ModelName))
+				.Select(g =>
+				{
+					// split into two lookup tables: ts → value
+					var avgDict = g.Where(s => s.AvgCpuPerServer > 0)
+									 .ToDictionary(s => s.SampleTimeUtc,
+												   s => s.AvgCpuPerServer);
 
+					var cntDict = g.Where(s => s.ClusterServerCount > 0)
+									 .ToDictionary(s => s.SampleTimeUtc,
+												   s => s.ClusterServerCount);
+
+					// intersection of timestamps
+					var latestTs = avgDict.Keys.Intersect(cntDict.Keys).Max();
+
+					return new CpuSample(
+						Region: g.Key.Region,
+						ModelName: g.Key.ModelName,
+						AvgCpuPerServer: avgDict[latestTs],
+						ClusterServerCount: cntDict[latestTs],
+						ClusterName: clusterName,
+						SampleTimeUtc: latestTs);
+				})
+				.ToList();
+
+		}
 
 		/// <summary>
 		/// Reads the PROMQL from 'AllocatedCpuQuery.promql', substitutes the

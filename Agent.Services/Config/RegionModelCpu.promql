@@ -1,0 +1,61 @@
+﻿# ───── per‑region / model_name  ▸ Allocated‑server COUNT ─────
+label_replace(
+  sum by (region,model_name)(
+    avg_over_time(
+      agones_gameservers_count{
+        type="Allocated",
+        exported_namespace="last-epoch",
+        cluster="<CLUSTERNAME>",
+        region!=""
+      }[5m]
+    )
+    *
+    on(cluster) group_left(model_name,region)
+    max by (cluster,model_name,region)(
+      node_cpu_info{model_name!="", cluster="<CLUSTERNAME>"}
+    )
+  ),
+  "stat","count","__name__","(.*)"
+)
+or
+# ───── per‑region / model_name  ▸ Avg CPU‑seconds PER ALLOCATED SERVER ─────
+label_replace(
+  (
+    sum by (region,model_name)(
+      avg_over_time(
+        rollup_rate(
+          agones_cluster_pod_cpu:container_cpu_usage_seconds_total{
+            namespace="last-epoch",
+            container!="POD",
+            cluster="<CLUSTERNAME>",
+            region!=""
+          }[5m]
+        )[5m]
+      )
+      *
+      on(node) group_left(model_name,region)
+      max by (node,model_name,region)(
+        node_cpu_info{model_name!="", cluster="<CLUSTERNAME>"}
+      )
+    )
+  )
+  /
+  (
+    sum by (region,model_name)(
+      avg_over_time(
+        agones_gameservers_count{
+          type="Allocated",
+          exported_namespace="last-epoch",
+          cluster="<CLUSTERNAME>",
+          region!=""
+        }[5m]
+      )
+      *
+      on(cluster) group_left(model_name,region)
+      max by (cluster,model_name,region)(
+        node_cpu_info{model_name!="", cluster="<CLUSTERNAME>"}
+      )
+    )
+  ),
+  "stat","avg","__name__","(.*)"
+)

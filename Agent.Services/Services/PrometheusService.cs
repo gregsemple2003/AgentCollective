@@ -56,6 +56,12 @@ namespace Agent.Services // Or your appropriate namespace
 
 	public class PrometheusService
 	{
+		private const bool VerboseHttpLogging = false;
+
+		private static readonly TimeSpan DefaultQueryTimeout = TimeSpan.FromMinutes(3);
+
+		private static readonly TimeSpan DefaultHttpTimeout = TimeSpan.FromMinutes(5);
+
 		private readonly HttpClient _client;
 		private readonly string _prometheusApiUrl;
 		private readonly string _bearerToken; // Store token for logging verification
@@ -101,7 +107,8 @@ namespace Agent.Services // Or your appropriate namespace
 
 			_client = new HttpClient(handler)
 			{
-				BaseAddress = new Uri(_prometheusApiUrl) // Use the processed path
+				BaseAddress = new Uri(_prometheusApiUrl),
+				Timeout = DefaultHttpTimeout
 			};
 
 			Console.WriteLine($"Initializing PrometheusService. Base API URL: {_client.BaseAddress}");
@@ -135,27 +142,27 @@ namespace Agent.Services // Or your appropriate namespace
 			HttpResponseMessage resp = null;
 			try
 			{
-#if DEBUG
-				{
-					var baseUrl = new Uri(_client.BaseAddress, "query");   // /api/v1/query
-					var sb = new System.Text.StringBuilder();
+//#if DEBUG
+//				{
+//					var baseUrl = new Uri(_client.BaseAddress, "query");   // /api/v1/query
+//					var sb = new System.Text.StringBuilder();
 
-					sb.AppendLine("=== CURL EQUIVALENT (Linux) ===");
-					sb.AppendLine($@"curl -s -G ""{baseUrl}"" \");
-					sb.AppendLine($@"  -H ""Authorization: Bearer {_bearerToken}"" \");
-					sb.AppendLine($@"  --data-urlencode ""query={queryExpr.Replace("\"", "\\\"")}"" \");
+//					sb.AppendLine("=== CURL EQUIVALENT (Linux) ===");
+//					sb.AppendLine($@"curl -s -G ""{baseUrl}"" \");
+//					sb.AppendLine($@"  -H ""Authorization: Bearer {_bearerToken}"" \");
+//					sb.AppendLine($@"  --data-urlencode ""query={queryExpr.Replace("\"", "\\\"")}"" \");
 
-					if (evalTimeUtc.HasValue)
-						sb.AppendLine($@"  --data-urlencode ""time={evalTimeUtc.Value
-												   .ToUniversalTime()
-												   .ToString("yyyy-MM-ddTHH:mm:ss.fffZ")}"" \");
+//					if (evalTimeUtc.HasValue)
+//						sb.AppendLine($@"  --data-urlencode ""time={evalTimeUtc.Value
+//												   .ToUniversalTime()
+//												   .ToString("yyyy-MM-ddTHH:mm:ss.fffZ")}"" \");
 
-					sb.AppendLine("  --compressed");
-					sb.AppendLine("==============================");
+//					sb.AppendLine("  --compressed");
+//					sb.AppendLine("==============================");
 
-					System.Diagnostics.Debug.WriteLine(sb.ToString());
-				}
-#endif
+//					System.Diagnostics.Debug.WriteLine(sb.ToString());
+//				}
+//#endif
 
 
 
@@ -179,6 +186,44 @@ namespace Agent.Services // Or your appropriate namespace
 			finally { resp?.Dispose(); }
 		}
 
+		public async Task<List<DataFrame>> ExecuteQueryRangeSlicedAsync(DateTime startUtc, DateTime endUtc, string queryExpr, TimeSpan step, TimeSpan slice = default)
+		{
+			if (slice == default)
+			{
+				slice = TimeSpan.FromHours(24);
+			}
+
+			var allFrames = new List<DataFrame>();
+			var sliceStart = startUtc;
+			var sliceIdx = 0;
+
+			while (sliceStart < endUtc)
+			{
+				// [sliceStart .. sliceEnd]   (inclusive)
+				var sliceEnd = sliceStart + slice;
+				if (sliceEnd > endUtc)
+					sliceEnd = endUtc;
+
+				Console.WriteLine(
+					$"[PromQL] ▶ slice {sliceIdx:00}: {sliceStart:yyyy-MM-dd HH:mm} → {sliceEnd:yyyy-MM-dd HH:mm}");
+
+				var part = await ExecuteQueryRangeAsync(sliceStart, sliceEnd, queryExpr, step);
+				allFrames.AddRange(part);
+
+				if (sliceEnd == endUtc)
+					break;                               // we’re done
+
+				// next slice starts one full “step” **after** the current sliceEnd
+				sliceStart = sliceEnd + step;
+				sliceIdx++;
+			}
+
+			Console.WriteLine($"[PromQL] ⏹ completed {sliceIdx + 1} slices; total frames = {allFrames.Count}");
+
+			return allFrames;
+		}
+
+
 		/// <summary>
 		/// Executes a PromQL query against the Prometheus range query API (/api/v1/query_range).
 		/// </summary>
@@ -198,6 +243,7 @@ namespace Agent.Services // Or your appropriate namespace
 			queryParams["start"] = startUtc;
 			queryParams["end"] = endUtc;
 			queryParams["step"] = step;
+			queryParams["timeout"] = $"{(int)DefaultQueryTimeout.TotalSeconds}s";
 
 			// Relative path from BaseAddress
 			var requestUri = $"query_range?{queryParams.ToString()}";
@@ -219,7 +265,7 @@ namespace Agent.Services // Or your appropriate namespace
 					response.EnsureSuccessStatusCode(); // Fallback throw
 				}
 
-				Console.WriteLine("Prometheus query successful. Parsing response data...");
+				//Console.WriteLine("Prometheus query successful. Parsing response data...");
 				return ParsePrometheusRangeResponse(responseData);
 			}
 			catch (Exception ex)
@@ -615,6 +661,8 @@ namespace Agent.Services // Or your appropriate namespace
 		/// </summary>
 		private async Task LogHttpRequestDetailsAsync(HttpMethod method, string relativeOrAbsoluteUri, HttpContent content = null, string context = "")
 		{
+			if (!VerboseHttpLogging) return;     // ← early‑exit when disabled
+
 			var sb = new StringBuilder();
 			var requestUri = new Uri(_client.BaseAddress, relativeOrAbsoluteUri); // Ensure absolute URI
 
