@@ -1,0 +1,45 @@
+(
+  sum by (model_name)(
+    (
+      avg by (cluster)(
+        rollup_rate(
+          agones_cluster_pod_cpu:container_cpu_usage_seconds_total{
+            namespace="last-epoch",
+            container!="POD",
+            cluster=~"<PFX>-.*-(lsw|gco|sco|nit).*"
+          }[5m]
+        )
+      )
+      *
+      on(cluster) group_left()
+      sum by (cluster)(
+        agones_gameservers_count{
+          type="Allocated",
+          exported_namespace="last-epoch",
+          cluster=~"<PFX>-.*-(lsw|gco|sco|nit).*"
+        }
+      )
+    )
+    *
+    on(cluster) group_left(model_name)
+    max by (cluster,model_name)(
+      node_cpu_info{model_name!="",cluster=~"<PFX>-.*-(lsw|gco|sco|nit).*"}
+    )
+  )
+)
+/(
+  sum by (model_name)(
+    sum by (cluster)(
+      agones_gameservers_count{
+        type="Allocated",
+        exported_namespace="last-epoch",
+        cluster=~"<PFX>-.*-(lsw|gco|sco|nit).*"
+      }
+    )
+    *
+    on(cluster) group_left(model_name)
+    max by (cluster,model_name)(
+      node_cpu_info{model_name!="",cluster=~"<PFX>-.*-(lsw|gco|sco|nit).*"}
+    )
+  )
+)
