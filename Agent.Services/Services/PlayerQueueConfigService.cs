@@ -8,25 +8,27 @@ using System.Linq;
 using System.Globalization;
 using System.Reflection;
 using System.Drawing;
+using Agent.Services.Utils;
+using System.Text;
 
 namespace Agent.Services
 {
-    internal class Cluster
+    public class Cluster
     {
-        internal string Name { get; set; }
-        internal string Type { get; set; } // gcp, bare-metal, gcp-tw
-        internal string Region { get; set; }
-        internal string Namespace { get; set; } // last-epoch
-        internal string Environment { get; set; } // prod, stge
-		internal List<Node> Nodes { get; set; } = new();
-		internal Dictionary<DateTime, double> ReadyReplicaCounts { get; set; } = new();
-		internal Dictionary<DateTime, double> AllocatedReplicaCounts { get; set; } = new();
-		internal Dictionary<DateTime, double> AllocatedCpuUtilisations { get; set; } = new();
-		internal Dictionary<DateTime, double> AvgCpuRequestPerPod { get; set; } = new();
-		internal Dictionary<string, string> DebugValues { get; set; } = new();
-		internal Dictionary<DateTime, double> PodCounts { get; set; } = new();
+        public string Name { get; set; }
+        public string Type { get; set; } // gcp, bare-metal, gcp-tw
+        public string Region { get; set; }
+        public string Namespace { get; set; } // last-epoch
+        public string Environment { get; set; } // prod, stge
+		public List<Node> Nodes { get; set; } = new();
+		public Dictionary<DateTime, double> ReadyReplicaCounts { get; set; } = new();
+		public Dictionary<DateTime, double> AllocatedReplicaCounts { get; set; } = new();
+		public Dictionary<DateTime, double> AllocatedCpuUtilisations { get; set; } = new();
+		public Dictionary<DateTime, double> AvgCpuRequestPerPod { get; set; } = new();
+		public Dictionary<string, string> DebugValues { get; set; } = new();
+		public Dictionary<DateTime, double> PodCounts { get; set; } = new();
 
-		internal bool IsBareMetal
+		public bool IsBareMetal
 		{
 			get
 			{
@@ -35,38 +37,43 @@ namespace Agent.Services
 			}
 		}
 
-		internal double LastPeakCpuRequestPerPod { get; set; }
+		public double LastPeakCpuRequestPerPod { get; set; }
 
 		/// <summary>
 		/// The time of peak allocated replicas on the last day processed by CalculateDailyPeaks.
 		/// </summary>
-		internal DateTime LastPeakAllocatedReplicaTime { get; set; }
+		public DateTime LastPeakAllocatedReplicaTime { get; set; }
 
 		/// <summary>
 		/// The count of ready replicas near the peak allocation time on the last day processed by CalculateDailyPeaks.
 		/// </summary>
-		internal int LastPeakReadyReplicaCount { get; set; }
+		public int LastPeakReadyReplicaCount { get; set; }
 
 		/// <summary>
 		/// The count of peak allocated replicas on the last day processed by CalculateDailyPeaks.
 		/// </summary>
-		internal int LastPeakAllocatedReplicaCount { get; set; }
+		public int LastPeakAllocatedReplicaCount { get; set; }
 
 		/// <summary>
 		/// The highest daily peak CPU utilization value found across ALL DAYS processed by CalculateDailyPeaks.
 		/// </summary>
-		internal double PeakAllocatedCpuUtilisation { get; set; }
+		public double PeakAllocatedCpuUtilisation { get; set; }
 
 		/// <summary>
 		/// The peak CPU utilization calculated for each specific day
 		/// </summary>
-		internal Dictionary<DateTime, double> DailyPeakAllocatedCpuUtilisations { get; set; } = new();
+		public Dictionary<DateTime, double> DailyPeakAllocatedCpuUtilisations { get; set; } = new();
+
+		/// <summary>
+		/// The Allocated‑replica count at the daily peak time for each day.
+		/// </summary>
+		internal Dictionary<DateTime, int> DailyPeakAllocatedCounts { get; set; } = new();
 
 		/// <summary>
 		/// Read-only property that formats the daily peak CPU values into a comma-separated string, ordered by date.
 		/// Suitable for CSV export.
 		/// </summary>
-		internal string DailyPeakAllocatedCpuValuesCsv
+		public string DailyPeakAllocatedCpuValuesCsv
 		{
 			get
 			{
@@ -83,7 +90,26 @@ namespace Agent.Services
 			}
 		}
 
-		internal bool TryGetNodeByName(string nodeName, out Node node, bool allowCreate = false)
+		/// <summary>
+		/// Daily peak Allocated counts as a CSV string, ordered by date.
+		/// </summary>
+		internal string DailyPeakAllocatedCountsCsv
+		{
+			get
+			{
+				if (DailyPeakAllocatedCounts == null || !DailyPeakAllocatedCounts.Any())
+					return string.Empty;
+
+				var valuesStr = string.Join(", ",
+					DailyPeakAllocatedCounts
+						.OrderBy(kvp => kvp.Key)   // date ascending
+						.Select(kvp => kvp.Value));
+
+				return $"[{valuesStr}]";
+			}
+		}
+
+		public bool TryGetNodeByName(string nodeName, out Node node, bool allowCreate = false)
         {
             node = null;
 
@@ -114,21 +140,23 @@ namespace Agent.Services
         }
     }
 
-    internal class Node
+	public delegate bool ClusterPredicate(Cluster c);
+
+	public class Node
     {
-        internal string Name { get; set; }
+        public string Name { get; set; }
 
         /// <summary>
         /// Ratio of CPU actually being used to the total CPU request across the entire node
         /// </summary>
-        internal Dictionary<DateTime, double> CpuActualToCpuRequest { get; set; }
+        public Dictionary<DateTime, double> CpuActualToCpuRequest { get; set; }
 
         /// <summary>
         /// Number of pods (game server) running on the node
         /// </summary>
-        internal Dictionary<DateTime, double> PodCounts { get; set; }
+        public Dictionary<DateTime, double> PodCounts { get; set; }
 
-        internal Node()
+        public Node()
         {
             CpuActualToCpuRequest = new Dictionary<DateTime, double>();
             PodCounts = new Dictionary<DateTime, double>();
@@ -187,6 +215,48 @@ namespace Agent.Services
 
 			var csv = ExportListToCsv(rows);
 			File.WriteAllText(fileName, csv);
+		}
+
+		/// <summary>
+		/// Generates <c>visualize_daily_peaks.kql</c> from the in‑memory
+		/// <see cref="_dailyPeakRows"/> list.  The KQL produces a time‑chart
+		/// of daily peak CPU cores per Allocated server, one series per cluster.
+		/// </summary>
+		public void WriteDailyPeaksKql()
+		{
+			if (_dailyPeakRows.Count == 0)
+			{
+				Console.WriteLine("No daily‑peak rows in memory; KQL not written.");
+				return;
+			}
+
+			var sb = new StringBuilder();
+			sb.AppendLine("// Auto‑generated KQL — daily peak CPU per Allocated server");
+			sb.AppendLine("let peaks = datatable (");
+			sb.AppendLine("    Cluster:string,");
+			sb.AppendLine("    Time:datetime,");
+			sb.AppendLine("    PeakCpu:double,");
+			sb.AppendLine("    PeakAllocatedCount:int,");
+			sb.AppendLine("    PeakDate:string");
+			sb.AppendLine(")[");
+			foreach (var r in _dailyPeakRows
+							   .OrderBy(r => r.Cluster)
+							   .ThenBy(r => r.PeakTimeUtc))
+			{
+				sb.AppendLine(
+					$"    \"{r.Cluster}\", datetime({r.PeakTimeUtc:u}), {r.PeakCpu:F6}, {r.PeakAllocatedCount}, \"{r.Date}\",");
+			}
+			sb.AppendLine("];");
+			sb.AppendLine();
+			sb.AppendLine("// Default view: time chart of CPU usage");
+			sb.AppendLine("peaks");
+			sb.AppendLine("| project Time, Cluster, PeakCpu");
+			sb.AppendLine("| order by Time asc");
+			sb.AppendLine("| render timechart");
+
+			var outPath = Path.Combine(_rootPath, "visualize_daily_peaks.kql");
+			File.WriteAllText(outPath, sb.ToString());
+			Console.WriteLine($"Wrote daily‑peaks KQL → {outPath}");
 		}
 
 		private class AllocatedCpuRow
@@ -367,13 +437,13 @@ namespace Agent.Services
 			return dict;
 		}
 
-		public async Task CalculateDailyPeaks(DateTime overallStartTime, DateTime overallEndTime)
+		public async Task CalculateDailyPeaks(DateTime overallStartTime, DateTime overallEndTime, ClusterPredicate pred = null)
 		{
+			using var _ = ScopedTimer.Measure(new { overallStartTime, overallEndTime });
+
 			// Ensure start/end times are aligned to UTC days for clarity
 			overallStartTime = overallStartTime.Date; // Start at midnight UTC
 			overallEndTime = overallEndTime.Date.AddDays(1).AddTicks(-1); // End just before midnight UTC of the next day
-
-			Console.WriteLine($"Calculating daily peaks from {overallStartTime:yyyy-MM-dd} to {overallEndTime:yyyy-MM-dd}...");
 
 			// Get Cluster Info (only need to do this once)
 			await UpdateClusterArmadaInfo(overallStartTime, overallEndTime);
@@ -382,6 +452,7 @@ namespace Agent.Services
 			await UpdateClusterReplicaCounts(overallStartTime, overallEndTime);
 
 			await UpdateClusterCpuRequests(overallStartTime, overallEndTime);
+
 			await UpdateClusterPodCounts(overallStartTime, overallEndTime);
 
 			// Process each day within the range
@@ -392,7 +463,8 @@ namespace Agent.Services
 
 				Console.WriteLine($"--- Processing Day: {dayStart:yyyy-MM-dd} ---");
 
-				foreach (var cluster in _clusters.Values)
+				foreach (var cluster in FilterClusters(pred))
+
 				{
 					// Calculate the peak for *this specific day* using the pre-fetched replica counts
 					await CalculateAndStoreDailyPeakCpu(cluster, dayStart, dayEnd, TimeSpan.FromMinutes(20));
@@ -401,6 +473,11 @@ namespace Agent.Services
 
 			// Optional: Calculate overall peak across all days if needed (using the stored daily peaks or re-evaluating full data)
 			// CalculateOverallPeakMetrics(); // Implement this if you still need the single 'overall' peak values
+			WriteClustersToCsv(fileName: "clusters.csv");
+
+			DumpListToCsvFile(_dailyPeakRows.OrderBy(r => r.Cluster).ThenBy(r => r.Date).ToList(), Path.Combine(_rootPath, "daily_cluster_peaks.csv"));
+
+			WriteDailyPeaksKql();
 
 			Console.WriteLine("Daily peak calculation complete.");
 		}
@@ -424,6 +501,8 @@ namespace Agent.Services
 		/// </summary>
 		private async Task CalculateAndStoreDailyPeakCpu(Cluster cluster, DateTime dayStart, DateTime dayEnd, TimeSpan timeAroundPeak)
 		{
+			using var _ = ScopedTimer.Measure(new { cluster = cluster.Name, dayStart, dayEnd });
+
 			string clusterName = cluster.Name; // Use the already normalized name
 			DateTime dayDate = dayStart.Date; // Key for the dictionary
 
@@ -502,6 +581,8 @@ namespace Agent.Services
 
 
 			Console.WriteLine($"Cluster '{clusterName}' [{dayDate:yyyy-MM-dd}]: Daily Peak Allocated Replicas = {dailyPeakAllocatedCount} at {dailyPeakAllocatedTime}. Ready Replicas (approx) = {dailyPeakReadyCount}.");
+
+			cluster.DailyPeakAllocatedCounts[dayDate] = dailyPeakAllocatedCount;
 
 			// If peak count is 0, the CPU query is invalid/meaningless.
 			if (dailyPeakAllocatedCount <= 0)
@@ -589,6 +670,14 @@ namespace Agent.Services
 				{
 					double dailyPeakCpu = cpuValuesInWindow.Average();
 					cluster.DailyPeakAllocatedCpuUtilisations[dayDate] = dailyPeakCpu;
+					_dailyPeakRows.Add(new DailyPeakRow(
+						Cluster: clusterName,
+						Date: dayDate.ToString("yyyy-MM-dd"),
+						PeakCpu: dailyPeakCpu,
+						PeakAllocatedCount: dailyPeakAllocatedCount,
+						PeakTimeUtc: dailyPeakAllocatedTime)
+					);
+
 					Console.WriteLine($"Cluster '{clusterName}' [{dayDate:yyyy-MM-dd}]: Calculated Daily Peak CPU Utilisation = {dailyPeakCpu:F4}");
 				}
 				else
@@ -621,6 +710,18 @@ namespace Agent.Services
 			}
 		}
 
+		/// <summary>
+		/// Row used for the daily peaks CSV export.
+		/// </summary>
+		private sealed record DailyPeakRow(
+			string Cluster,
+			string Date,
+			double PeakCpu,
+			int PeakAllocatedCount,
+			DateTime PeakTimeUtc
+		);
+		private readonly List<DailyPeakRow> _dailyPeakRows = new();
+
 		public async Task WriteClustersToCsv(string fileName)
         {
 			var csv = ExportListToCsv(_clusters.Values.ToList());
@@ -637,6 +738,8 @@ namespace Agent.Services
 		/// <returns></returns>
 		public async Task UpdateClusterReplicaCounts(DateTime startTime, DateTime endTime)
 		{
+			using var _ = ScopedTimer.Measure(new { startTime, endTime });
+
 			var queryTemplate = @"
 				sum by (type, cluster) (
 					agones_fleets_replicas_count{type=~""allocated|ready"", name=""prod-a""}
@@ -672,8 +775,10 @@ namespace Agent.Services
 			}
 		}
 
-		public async Task UpdateClusterCpuRequests(DateTime start, DateTime end)
+		public async Task UpdateClusterCpuRequests(DateTime startTime, DateTime endTime)
 		{
+			using var _ = ScopedTimer.Measure(new { startTime, endTime });
+
 			const string query = @"
 			sum by (cluster) (
 			  agones_cluster_node_cpu_requests:kube_pod_container_resource_requests:sum{
@@ -683,15 +788,17 @@ namespace Agent.Services
 			)";
 
 			var step = TimeSpan.FromMinutes(15);
-			var frames = await _prometheusService.ExecuteQueryRangeAsync(start, end, query, step);
+			var frames = await _prometheusService.ExecuteQueryRangeAsync(startTime, endTime, query, step);
 
 			foreach (var f in frames)
 				if (TryGetClusterByName(NormalizeClusterName(f.Dimensions["cluster"]), out var c))
 					c.AllocatedCpuUtilisations = f.AsDictionary();        // reuse existing dict
 		}
 
-		public async Task UpdateClusterPodCounts(DateTime start, DateTime end)
+		public async Task UpdateClusterPodCounts(DateTime startTime, DateTime endTime)
 		{
+			using var _ = ScopedTimer.Measure(new { startTime, endTime });
+
 			var step = TimeSpan.FromMinutes(15);
 
 			foreach (var (name, cluster) in _clusters)
@@ -703,7 +810,8 @@ namespace Agent.Services
 					  }}
 					)";
 
-				var frames = await _prometheusService.ExecuteQueryRangeAsync(start, end, query, step);
+				using var _inner = ScopedTimer.Measure(new { clusterName = name, clusterType = cluster.Type});
+				var frames = await _prometheusService.ExecuteQueryRangeSlicedAsync(startTime, endTime, query, step, slice: TimeSpan.FromHours(24));
 				cluster.PodCounts = frames
 					.SelectMany(f => f.AsDictionary())
 					.GroupBy(kvp => kvp.Key)          // timestamp
@@ -808,6 +916,8 @@ namespace Agent.Services
 		/// <summary>
 		public async Task UpdateClusterArmadaInfo(DateTime startTime, DateTime endTime)
 		{
+			using var _ = ScopedTimer.Measure(new { startTime, endTime });
+
 			var armadaRegex = string.Join("|", _armadaSets.Select(s => s.Replace("\"", "")));
 			// Use 'max_over_time' to ensure we get labels even if the metric appears/disappears
 			// during the query range. We only care about the labels existing at *some point*.
@@ -1108,5 +1218,12 @@ namespace Agent.Services
                 }
             }
         }
-    }
+
+		private IEnumerable<Cluster> FilterClusters(ClusterPredicate pred)
+		{
+			return pred == null
+				 ? _clusters.Values
+				 : _clusters.Values.Where(pred.Invoke);
+		}
+	}
 }

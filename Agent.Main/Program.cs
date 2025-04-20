@@ -56,11 +56,15 @@ namespace Agent.Main
 				"prod-a",
 				"prod-a-towns",
 			};
-			await QueryClusterCpuByModel_Pre12(prometheusService, armadaSets);
-			//await QueryClusterCpuByModel_Post12(prometheusService, armadaSets);
+			var basePath = "C:\\Users\\Admin\\Documents\\Projects\\AgentCollective\\Agent.Services";
+			//await QueryClusterCpuByModel_Pre12(prometheusService, armadaSets, basePath);
+			//await QueryClusterCpuByModel_Post12(prometheusService, armadaSets, basePath);
 			//         await playerQueueConfigService.ExportAllocatedCpuByModelCsvAsync("all_clusters.csv");
-			//await playerQueueConfigService.CalculateDailyPeaks(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow);
-			//         playerQueueConfigService.WriteClustersToCsv(fileName: "clusters.csv");
+			var playerQueueConfigService = new PlayerQueueConfigService(prometheusService, armadaSets, basePath);
+			var startTime = DateTime.UtcNow.AddDays(-10);
+			var endTime = DateTime.UtcNow.AddDays(0);
+			var step = TimeSpan.FromMinutes(15);
+			await playerQueueConfigService.CalculateDailyPeaks(startTime, endTime, c => c.IsBareMetal);
 			//await playerQueueConfigService.GetPeakAllocationRatesByRegion();
 			// Run jobs until we're told to exit
 			//await jobRunner.RunJob(new UpdateRepositorySummaryJob(repositorySummaryDataStore, codeAnalysisService, repositoryQueryService, languageModelService, @"c:\Features\BizDevAgent_convertxml"));
@@ -93,22 +97,22 @@ namespace Agent.Main
 			//await jobRunner.Start();
 		}
 
-		private static async Task QueryClusterCpuByModel_Pre12(PrometheusService prometheusService, List<string> armadaSets)
+		private static async Task QueryClusterCpuByModel_Pre12(PrometheusService prometheusService, List<string> armadaSets, string outputPath)
 		{
-			var playerQueueConfigService = new PlayerQueueConfigService(prometheusService, armadaSets, "Output\\");
+			var playerQueueConfigService = new PlayerQueueConfigService(prometheusService, armadaSets, outputPath);
 			var startTime = DateTime.UtcNow.AddDays(-10);
 			var endTime = DateTime.UtcNow.AddDays(-3);
 			var step = TimeSpan.FromMinutes(15);
-			var weightedCpu = await playerQueueConfigService.GetGlobalWeightedCpuAsync(startTime, endTime, step);
+			var weightedCpu = await playerQueueConfigService.GetGlobalWeightedCpuAsync(startTime, endTime, step, slice: TimeSpan.FromDays(2));
 		}
 
-		private static async Task QueryClusterCpuByModel_Post12(PrometheusService prometheusService, List<string> armadaSets)
+		private static async Task QueryClusterCpuByModel_Post12(PrometheusService prometheusService, List<string> armadaSets, string outputPath)
 		{
-			var playerQueueConfigService = new PlayerQueueConfigService(prometheusService, armadaSets, "Output\\");
+			var playerQueueConfigService = new PlayerQueueConfigService(prometheusService, armadaSets, outputPath);
 			var startTime = DateTime.UtcNow.AddDays(-1);
 			var endTime = DateTime.UtcNow.AddDays(0);
 			var step = TimeSpan.FromMinutes(15);
-			var weightedCpu = await playerQueueConfigService.GetGlobalWeightedCpuAsync(startTime, endTime, step);
+			var weightedCpu = await playerQueueConfigService.GetGlobalWeightedCpuAsync(startTime, endTime, step, slice: TimeSpan.FromDays(2));
 		}
 
 	}
