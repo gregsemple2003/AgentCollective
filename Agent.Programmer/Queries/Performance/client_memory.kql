@@ -1,7 +1,9 @@
-﻿let minSampleCount = 1;
+let minSampleCount = 1;
 let startTime = ago(10d);
-let minSessionTime = 60;
+let minSessionTime = 1;
 let maxSessionTime = 600.0; // 0 to disable
+let targetProfiles = dynamic(["nightlyrelease"]);
+//let targetProfiles = dynamic(["prod-a", "prod-a-towns"]);
 
 // Just grab the raw events and format them to approximate GameServerLogs scheme
 let baseEventQuery = playfabevents
@@ -10,7 +12,7 @@ let baseEventQuery = playfabevents
 | extend JsonDetails = tostring(EventData.json_details)
 | extend TimeGenerated = Timestamp
 | extend PlayerClientSessionId = tostring(EventData.session)
-//| extend Profile = tostring(EventData.multiplay_profile_override) // not complete
+| extend Scene = tostring(parse_json(JsonDetails).scene)
 //| summarize count() by FullName_Name
 ;
 
@@ -33,7 +35,7 @@ let processQueryMemoryTime = processMetricsQuery
 | extend BucketMin = todouble(b.min)
 | extend BucketN = todouble(b.n)
 | extend BucketAvg = todouble(b.avg)
-| project TimeGenerated, MetricsId, BucketMin, BucketN, BucketAvg, MetricsTime;
+| project TimeGenerated, MetricsId, BucketMin, BucketN, BucketAvg, MetricsTime, PlayerClientSessionId;
 
 // Calculate weighted-average memory by session
 let avgMemoryPerSession = processQueryMemoryTime
@@ -41,10 +43,10 @@ let avgMemoryPerSession = processQueryMemoryTime
         TotalSamples   = sum(BucketN),
         WeightedMemSum = sum(BucketAvg * BucketN),
         SessionTimeSecs  = max(MetricsTime) // same value for all rows
-        by MetricsId, TimeGenerated
+        by MetricsId, TimeGenerated, PlayerClientSessionId
 | extend AverageMemBytes = WeightedMemSum / TotalSamples     // weighted mean
 | extend AverageMemGB = AverageMemBytes / (1024.0 * 1024.0 * 1024.0)
-| project TimeGenerated, MetricsId, AverageMemGB, TotalSamples, SessionTimeSecs, WeightedMemSum;
+| project TimeGenerated, MetricsId, AverageMemGB, TotalSamples, SessionTimeSecs, WeightedMemSum, PlayerClientSessionId;
 
 // Histogram of memory usage
 let avgMemoryHistogram = avgMemoryPerSession
@@ -54,8 +56,93 @@ let avgMemoryHistogram = avgMemoryPerSession
 | render columnchart                      // "Column chart" ≈ histogram in the UI
 ;
 
-//avgMemoryHistogram
-baseEventQuery
-| project TimeGenerated, PlayerClientSessionId, EventData
-| take 5
-//| summarize count() by Play
+// lookup client sesion id to profile
+// USE: | join kind = inner (clientSessionIdToProfile) on PlayerClientSessionId
+let clientSessionIdToProfile =
+GameServerLogs
+| where TimeGenerated > startTime
+| summarize arg_max(TimeGenerated, Profile) by PlayerClientSessionId
+| where Profile !contains "-towns"
+| project PlayerClientSessionId, Profile;
+
+// lookup client session id to account name
+// USE: | join kind = inner (clientSessionIdToAccountName) on PlayerClientSessionId
+let clientSessionIdToAccountName =
+    GameServerLogs
+    | where TimeGenerated > startTime
+    | where Message has "joined" and Message startswith "Player"
+    | extend AccountName = extract(@"Player\s+'?([^']+?)'?\s+joined", 1, Message)
+    | where isnotempty(AccountName)
+    | summarize arg_max(TimeGenerated, AccountName) by PlayerClientSessionId
+    | project PlayerClientSessionId, AccountName;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Normalized average memory histogram
+// ─────────────────────────────────────────────────────────────────────────────
+let profileJson = tostring(targetProfiles);
+let profileList = replace(@'[\[\]""]', "", profileJson);   // → prod-a,prod-a-towns
+let chartTitle  = strcat("Normalised Session-Memory Histogram (", profileList, ")");
+let normalizedMemoryPerSession = avgMemoryPerSession
+| join kind = inner (clientSessionIdToProfile) on PlayerClientSessionId
+| where Profile in (targetProfiles)
+| where TotalSamples >= minSampleCount
+// Step 1️: Count sessions per 1-GB bin per profile
+| summarize Sessions = count()
+          by Profile, Bin = bin(AverageMemGB, 1.0)
+// Step 2: Calculate total sessions per profile
+| join kind = inner (
+        avgMemoryPerSession
+        | join kind = inner (clientSessionIdToProfile) on PlayerClientSessionId
+        | where Profile in (targetProfiles)
+        | where TotalSamples >= minSampleCount
+        | summarize TotalSessions = count() by Profile
+  ) on Profile
+// Step 3: fraction (or percentage) of sessions in each bin
+| extend Share = todouble(Sessions) / todouble(TotalSessions) // 0-1
+| extend SharePct = Share * 100.0
+| order by Bin
+| project Bin, Profile, SharePct
+| render columnchart
+        with (kind = unstacked,
+               series = Profile,
+               title = chartTitle,
+               ytitle = "Share of Sessions (%)",
+               xtitle = "Average Memory (GB)")
+;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Daily average session-memory per profile
+// ─────────────────────────────────────────────────────────────────────────────
+let dailyAvgMemoryByProfile = avgMemoryPerSession
+| join kind = inner (clientSessionIdToProfile) on PlayerClientSessionId
+| where Profile in (targetProfiles)
+| summarize
+        SumWeightedMem = sum(WeightedMemSum),   // Σ(avg × n)
+        SumSamples     = sum(TotalSamples)      // Σ n        
+        by Profile, bin(TimeGenerated, 1d)
+| extend AvgMemWeightedGB = SumWeightedMem / SumSamples / (1024.0 * 1024.0 * 1024.0)
+| project TimeGenerated, Profile, AvgMemWeightedGB
+| render timechart
+;
+
+// Custom: check why many are reporting <4GB during normal map runs
+let lowMemoryQuery = baseEventQuery 
+| extend d = parse_json(JsonDetails)
+| extend CPU      = tostring(d.processMetrics.systemInfo.processorType)
+| extend Platform = tostring(d.processMetrics.systemInfo.platform)
+| extend MaxMemory = todouble(d.processMetrics.systemInfo.maxMemory) / (1024.0)
+| extend OS = tostring(d.processMetrics.systemInfo.os)
+| extend MemAvgBytes = todouble(d.processMetrics.memHistogram[0].avg)
+| extend MemAvgGB = MemAvgBytes / (1024.0 * 1024.0 * 1024.0)
+| where MemAvgGB < 4.0 // low memory threshold
+//| where PlayerClientSessionId has "6dad7c9bd2a849d386ced8b689e36689"
+| project-away JsonDetails
+| project-reorder TimeGenerated, Scene, MemAvgGB
+//| take 1000
+| summarize count() by MaxMemory
+;
+
+//lowMemoryQuery
+//dailyAvgMemoryByProfile
+normalizedMemoryPerSession
+//dailyAvgMemoryPerSession
