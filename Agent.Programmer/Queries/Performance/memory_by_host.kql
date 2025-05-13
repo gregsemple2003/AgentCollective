@@ -1,0 +1,63 @@
+let minSampleCount = 1;
+let startTime = ago(14d);
+let targetPlayerCount = 1;
+let minSessionTime = 60;
+let maxSessionTime = 600.0; // 0 to disable
+
+// Base query to grab JSON session metrics
+let processMetricsQuery = GameServerLogs
+//| where $__timeFilter(TimeGenerated)
+| where TimeGenerated > startTime
+| where JsonDetails contains "processMetrics"
+| project TimeGenerated, Host, JsonDetails, Location, Profile
+| sort by TimeGenerated asc
+| extend MetricsId = strcat(TimeGenerated, "_", Host)
+| extend d = parse_json(JsonDetails)
+| extend MetricsTime = todouble(d.elapsedTimeSeconds)
+| where maxSessionTime != 0.0 and MetricsTime > minSessionTime and MetricsTime < maxSessionTime;
+
+// Expand each hourly bucket into a row
+let processQueryMemoryTime = processMetricsQuery
+| mv-expand d.processMetrics.memTimeHistogram
+| extend b = parse_json(d_processMetrics_memTimeHistogram)
+| extend BucketMin = todouble(b.min)
+| extend BucketN = todouble(b.n)
+| extend BucketAvg = todouble(b.avg)
+| project TimeGenerated, MetricsId, BucketMin, BucketN, BucketAvg, Host, MetricsTime, Profile;
+
+// Calculate weighted-average memory by session
+let avgMemoryPerSession = processQueryMemoryTime
+| summarize
+        TotalSamples   = sum(BucketN),
+        WeightedMemSum = sum(BucketAvg * BucketN),
+        SessionTimeSecs  = max(MetricsTime) // same value for all rows
+        by MetricsId, Host, TimeGenerated, Profile
+| extend AverageMemKB = WeightedMemSum / TotalSamples     // weighted mean
+| extend AverageMemGB = AverageMemKB / (1024.0 * 1024.0)
+| project TimeGenerated, MetricsId, AverageMemGB, TotalSamples, SessionTimeSecs, Host, Profile, WeightedMemSum;
+
+// Roll-up sessions into per profile average memory usage
+let avgMemoryByProfile =
+avgMemoryPerSession
+| summarize
+      ProfileWeightedMemSumKB = sum(WeightedMemSum),   // Σ (avg×n) in KB
+      ProfileTotalSamples     = sum(TotalSamples)      // Σ n
+      by Profile
+| extend AverageMemKB = ProfileWeightedMemSumKB / ProfileTotalSamples
+| extend AverageMemGB = AverageMemKB / (1024.0 * 1024)
+| project Profile, AverageMemGB, ProfileTotalSamples
+| sort by AverageMemGB desc;
+ 
+// // CUSTOM: unity 6 upgrade
+// avgMemoryByProfile
+// | where Profile in ("dev1", "nightlyrelease", "nightlymain")
+// | project Profile, AverageMemGB
+// | order by Profile asc
+// | render columnchart
+
+avgMemoryPerSession
+| where Profile in ("dev1", "nightlyrelease", "nightlymain")
+| project SessionTimeSecs, AverageMemGB, Profile
+| summarize AvgMemGB = avg(AverageMemGB)    // mean of all sessions in the bin
+          by ElapsedBucket = bin(SessionTimeSecs, 60), Profile
+| render linechart 

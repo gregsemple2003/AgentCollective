@@ -1,0 +1,61 @@
+﻿let minSampleCount = 1;
+let startTime = ago(10d);
+let minSessionTime = 60;
+let maxSessionTime = 600.0; // 0 to disable
+
+// Just grab the raw events and format them to approximate GameServerLogs scheme
+let baseEventQuery = playfabevents
+| where Timestamp > startTime
+| where FullName_Name has "lastepoch_session_performance_metrics"
+| extend JsonDetails = tostring(EventData.json_details)
+| extend TimeGenerated = Timestamp
+| extend PlayerClientSessionId = tostring(EventData.session)
+//| extend Profile = tostring(EventData.multiplay_profile_override) // not complete
+//| summarize count() by FullName_Name
+;
+
+// Base query to grab JSON session metrics
+let processMetricsQuery = baseEventQuery
+//| where $__timeFilter(TimeGenerated)
+| where TimeGenerated > startTime
+| where JsonDetails contains "processMetrics"
+| project TimeGenerated, PlayerClientSessionId, JsonDetails
+| sort by TimeGenerated asc
+| extend MetricsId = strcat(TimeGenerated, "_", PlayerClientSessionId)
+| extend d = parse_json(JsonDetails)
+| extend MetricsTime = todouble(d.elapsedTimeSeconds)
+| where maxSessionTime != 0.0 and MetricsTime > minSessionTime and MetricsTime < maxSessionTime;
+
+// Expand each hourly bucket into a row
+let processQueryMemoryTime = processMetricsQuery
+| mv-expand d.processMetrics.memTimeHistogram
+| extend b = parse_json(d_processMetrics_memTimeHistogram)
+| extend BucketMin = todouble(b.min)
+| extend BucketN = todouble(b.n)
+| extend BucketAvg = todouble(b.avg)
+| project TimeGenerated, MetricsId, BucketMin, BucketN, BucketAvg, MetricsTime;
+
+// Calculate weighted-average memory by session
+let avgMemoryPerSession = processQueryMemoryTime
+| summarize
+        TotalSamples   = sum(BucketN),
+        WeightedMemSum = sum(BucketAvg * BucketN),
+        SessionTimeSecs  = max(MetricsTime) // same value for all rows
+        by MetricsId, TimeGenerated
+| extend AverageMemBytes = WeightedMemSum / TotalSamples     // weighted mean
+| extend AverageMemGB = AverageMemBytes / (1024.0 * 1024.0 * 1024.0)
+| project TimeGenerated, MetricsId, AverageMemGB, TotalSamples, SessionTimeSecs, WeightedMemSum;
+
+// Histogram of memory usage
+let avgMemoryHistogram = avgMemoryPerSession
+| summarize Sessions = count()            // how many sessions fall in each bin
+          by Bin = bin(AverageMemGB, 1.0) // 1-GB-wide buckets; change 1.0 → 0.5, 2, etc.
+| order by Bin
+| render columnchart                      // "Column chart" ≈ histogram in the UI
+;
+
+//avgMemoryHistogram
+baseEventQuery
+| project TimeGenerated, PlayerClientSessionId, EventData
+| take 5
+//| summarize count() by Play
