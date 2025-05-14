@@ -1,0 +1,165 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Parameters – adjust as needed
+// ─────────────────────────────────────────────────────────────────────────────
+let startTime      = ago(60d);
+let targetFrameMs  = 50.0;          // "hitch" threshold in milliseconds
+let hitchBin       = 50.0;           // histogram bucket width (hitches per hour)
+let minSessionTime = 1.0;           // ignore <1 s sessions
+let maxSessionTime = 600.0;         // cap sessions at 10 min; set 0 to disable
+let minBucketSampleCount = 3;      // minimum number of sessions in a bucket or it will be dropped
+let targetProfiles = dynamic(["nightlyrelease"]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Base event pull
+// ─────────────────────────────────────────────────────────────────────────────
+let baseEventQuery = playfabevents
+| where Timestamp > startTime
+| where FullName_Name has "lastepoch_session_performance_metrics" 
+    or (FullName_Name has "lastepoch_client_log" and EventData contains "frameTimeMetrics")// backwards compat with old event format
+| extend JsonDetails = tostring(coalesce(EventData.json_details, EventData.jsonDetails)) // backwards compat with old event format
+| extend TimeGenerated         = Timestamp
+| extend PlayerClientSessionId = tostring(EventData.session)
+| extend Scene                 = tostring(parse_json(JsonDetails).scene);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Frame-time metrics – one row per performance event
+// ─────────────────────────────────────────────────────────────────────────────
+let frameMetricsQuery = baseEventQuery
+| where TimeGenerated > startTime
+//| project TimeGenerated, PlayerClientSessionId, JsonDetails
+| sort by TimeGenerated asc
+| extend MetricsId  = strcat(TimeGenerated, "_", PlayerClientSessionId)
+| extend d          = parse_json(JsonDetails)
+| extend MetricsTime = todouble(d.elapsedTimeSeconds)        // session time at this packet
+// | where  (MetricsTime >  minSessionTime)
+//    and  (maxSessionTime == 0.0 or MetricsTime < maxSessionTime)
+;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Frame-time metrics – one row per bucket
+// ─────────────────────────────────────────────────────────────────────────────
+let frameTimeBuckets = frameMetricsQuery
+| mv-expand d.frameTimeMetrics.buckets                        // → d_frameTimeMetrics_buckets
+| extend b         = parse_json(d_frameTimeMetrics_buckets)
+| extend BucketMin = todouble(b.min),
+         BucketN   = todouble(b.n)
+| project TimeGenerated, MetricsId, PlayerClientSessionId,
+          BucketMin, BucketN, MetricsTime;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Roll-up frame time metrics per event (count frames > Xms)
+// ─────────────────────────────────────────────────────────────────────────────
+let hitchesPerEvent = frameTimeBuckets
+| summarize
+      FramesAbove     = sumif(BucketN, BucketMin >= targetFrameMs),
+      SessionTimeSecs = max(MetricsTime)          // same for all rows in packet
+      by MetricsId, TimeGenerated, PlayerClientSessionId
+| where SessionTimeSecs > 0
+| extend HitchesPerHour = FramesAbove / (SessionTimeSecs / 3600.0);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Optional – profile & account look-ups
+// ─────────────────────────────────────────────────────────────────────────────
+let clientSessionIdToProfile =
+    GameServerLogs
+    | where TimeGenerated > startTime
+    | summarize arg_max(TimeGenerated, Profile) by PlayerClientSessionId
+    | where Profile !contains "-towns"
+    | project PlayerClientSessionId, Profile;
+
+let clientSessionIdToAccountName =
+    GameServerLogs
+    | where TimeGenerated > startTime
+    | where Message has "joined" and Message startswith "Player"
+    | extend AccountName = extract(@"Player\s+'?([^']+?)'?\s+joined", 1, Message)
+    | where isnotempty(AccountName)
+    | summarize arg_max(TimeGenerated, AccountName) by PlayerClientSessionId
+    | project PlayerClientSessionId, AccountName;
+
+let clientSessionIdToUnity6 =
+    GameServerLogs
+    | where TimeGenerated > startTime
+    | where Profile !contains "-towns"
+    | where PlayerClientSessionId !contains "HTTP" // for whatever reason, this can be an HTTP error
+    | where isnotempty(PlayerClientSessionId)
+        | summarize
+        LastSeen = arg_max(TimeGenerated, UnityVersion)   // LastSeen = TimeGenerated
+      by PlayerClientSessionId, UnityVersion
+    //| summarize count() by UnityVersion, PlayerClientSessionId
+    | where UnityVersion startswith "6000"
+    //| project PlayerClientSessionId, Profile
+;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Histogram – *overall* hitches per hour
+// ─────────────────────────────────────────────────────────────────────────────
+let hitchHistogram = hitchesPerEvent
+| join kind = inner (clientSessionIdToProfile) on PlayerClientSessionId
+| where Profile in (targetProfiles)
+| summarize Sessions = count() by Bin = bin(HitchesPerHour, hitchBin)
+| where Sessions > minBucketSampleCount
+| order by Bin asc
+| extend BinLabel = strcat(tostring(Bin), "-", tostring(Bin + hitchBin))
+| project BinLabel, Sessions
+| render columnchart
+    with (
+        title  = strcat("Hitches per Hour Histogram (>", tostring(targetFrameMs), " ms)"),
+        xtitle = strcat("Hitches per Hour (", tostring(hitchBin), "-wide bins)"),
+        ytitle = "Number of Sessions"
+    )
+;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Daily trend – hourly hitch-rate per profile
+// ─────────────────────────────────────────────────────────────────────────────
+let dailyHitchRate =
+    hitchesPerEvent
+    // tie each packet to its profile
+    | join kind = inner (clientSessionIdToProfile) on PlayerClientSessionId
+    | where Profile in (targetProfiles)
+    // roll-up by calendar day (bin(...,1d)) – one row per day per profile
+    | summarize
+        Sessions           = count(),                     // how many packets in bucket
+        Mean_HitchRate     = avg(HitchesPerHour),
+        Median_HitchRate   = percentile(HitchesPerHour, 50),
+        P99_HitchRate      = percentile(HitchesPerHour, 99)
+        by Day = bin(TimeGenerated, 1d), Profile
+    // optionally drop days with very few samples
+    | where Sessions >= minBucketSampleCount
+    | project Day, Profile, Mean_HitchRate, P99_HitchRate
+    | render timechart
+          with (
+              title  = strcat("Daily Hitch Rate – Mean vs P99  (>", tostring(targetFrameMs), " ms)"),
+              ytitle = "Hitches per Hour",
+              series = Profile
+          )
+;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (CUSTOM FOR UNITY6) Daily trend – hourly hitch-rate per profile
+// ─────────────────────────────────────────────────────────────────────────────
+let targetSessions = clientSessionIdToUnity6
+| distinct PlayerClientSessionId
+;
+
+let dailyHitchRateUnity6 =
+    hitchesPerEvent
+    | join kind=inner (clientSessionIdToUnity6) on PlayerClientSessionId
+    | summarize
+          Sessions         = count(),
+          Mean_HitchRate   = avg(HitchesPerHour),
+          Median_HitchRate = percentile(HitchesPerHour, 50),
+          P99_HitchRate    = percentile(HitchesPerHour, 99)
+          by Day = bin(TimeGenerated, 1d)
+    | where Sessions >= minBucketSampleCount
+    | project Day, Mean_HitchRate, P99_HitchRate
+    | render timechart
+          with (title  = strcat("Daily Hitch Rate – Unity 6000.*, >", tostring(targetFrameMs), " ms"),
+                 ytitle = "Hitches per Hour")
+;
+
+
+//hitchHistogram
+//dailyHitchRate
+//serverUnity6Sessions
+//dailyHitchRateUnity6
