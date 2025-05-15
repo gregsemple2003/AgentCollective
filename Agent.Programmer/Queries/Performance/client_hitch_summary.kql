@@ -17,7 +17,7 @@ let hitchUserName = "";
 let hitchExcludedUsers = dynamic(["AudioHead2001", "aoaofthefire", "Kufaz", "GSSteamTester11"]);
 
 // Step 0: Query a bunch of hitch reports 
-let HitchReports = GameServerLogs
+let baseHitchReports = GameServerLogs
 //| where Profile has "greg"
 | where isnull(hitchTimeAgo) or TimeGenerated > hitchTimeAgo
 | where Message endswith "Client hitch"
@@ -28,7 +28,7 @@ let HitchReports = GameServerLogs
         tostring(JsonDetails)
     )
 )
-| serialize
+//| serialize
 | extend HitchId = hash_md5(strcat(Host, "_", TimeGenerated))
 // | where JsonDetails contains ""
 //| where JsonDetails contains_cs "hotPath"
@@ -52,19 +52,37 @@ let HitchReports = GameServerLogs
 | extend Scene           = extract(@"\""scene\""\s*:\s*\""(.*?)\""", 1, JsonText)
 | extend PlayfabId       = extract(@"\""playfabID\""\s*:\s*\""(.*?)\""", 1, JsonText)
 | extend ClientSessionId = extract(@"\""clientSessionID\""\s*:\s*\""(.*?)\""", 1, JsonText)
-| project-reorder TimeGenerated, Host, HitchId, Scene, PlayfabId, UserName, ClientSessionId, JsonText
+| extend HotPathArray = extractjson("$.hotPath", JsonText, typeof(dynamic))
+| project-away JsonText
+| project-reorder TimeGenerated, Host, HitchId, Scene, PlayfabId, UserName, ClientSessionId
 //| where isempty(hitchContainsText) or JsonText contains hitchContainsText // DEBUGGING
 //| where isempty(hitchUserName) or UserName contains hitchUserName // DEBUGGING
 //| where UserName !in (hitchExcludedUsers)
-| extend HotPathArray = extractjson("$.hotPath", JsonText, typeof(dynamic))
 //| where isnotnull(HotPathArray) and gettype(HotPathArray) == "array" 
 ;
 
+let hitchReportsWithHotPathInfo = baseHitchReports
+    | mv-apply                           // still per-row, never multiplies outer rows
+        with_itemindex = HotPathIndex    // keep the original order
+        HotPathLine    = HotPathArray to typeof(string) on (
+            
+        // ── 1. extract once into scalars ───────────────────────────────────────
+        extend sampleCount = todouble( extract(@"^\s*\[(\d+(?:\.\d+)?)\s*/", 1, HotPathLine) ),
+               percentStr  = extract(@"/\s*(\d+(?:\.\d+)?%)", 1, HotPathLine),
+               percent     = todouble( replace_string(percentStr, "%", "") ),
+               functionName= coalesce(
+                                extract(@"\]\s*([^()]+)\(\)", 1, HotPathLine), "<unknown>"),
+               modulePath  = coalesce(
+                                extract(@"\)\s*(.*)$", 1, HotPathLine), "<unknown>"),
+               isCallstackLine = HotPathLine contains "callstackTree",
+
+;
+
 // Step 1: Expand each row, tagging row/line order
-let ExpandedHothPath = HitchReports
+let ExpandedHothPath = baseHitchReports 
 | mv-expand with_itemindex=HotPathIndex HotPathLine = HotPathArray to typeof(string)
 | project-away HotPathArray
-| project-reorder HitchId, HotPathIndex, HotPathLine, JsonText
+| project-reorder HitchId, HotPathIndex, HotPathLine
 ;
 
 // Step 2: Extract callstack info (SampleCount, Percent, FunctionName, ModulePath) per line
@@ -168,11 +186,11 @@ let HitchesWithSignature = FilteredHotPath
 | project-reorder HitchId, HitchSignature, HitchCategories, HitchGroupId, HitchTimeMillis
 ;
 
-// Step 4 (DEBUG VERSION), includes original json for verification
-let HitchesWithSignatureWithOriginalJson = HitchesWithSignature 
-| join kind=inner HitchReports on HitchId
-| project-reorder HitchId, HitchTimeMillis, HitchSignature, JsonText, UserName
-;
+// // Step 4 (DEBUG VERSION), includes original json for verification
+// let HitchesWithSignatureWithOriginalJson = HitchesWithSignature 
+// | join kind=inner baseHitchReports on HitchId
+// | project-reorder HitchId, HitchTimeMillis, HitchSignature, JsonText, UserName
+// ;
 
 // Step 5: Aggregate hitches and calculate counts and average per hitch signature
 let AggregateHitches = HitchesWithSignature
@@ -195,7 +213,7 @@ let AggregateHitches = HitchesWithSignature
 
 // Compute session durations for all Hosts with hitches
 let SessionDurations = GameServerLogs
-| where Host in (HitchReports | summarize by Host)
+| where Host in (baseHitchReports | summarize by Host)
 | summarize MinTime = min(TimeGenerated), MaxTime = max(TimeGenerated) by Host
 | extend SessionDurationHours = (MaxTime - MinTime) / 1h
 ;
@@ -252,9 +270,11 @@ let TopHitchContribution = AggregateHitches
 // // | summarize sum(PlaytimeHours) by bin(min_TimeGenerated, 1d)
 // | render timechart 
 
-HitchReports // Step 0: query raw hitches
-| summarize count() by 1
+hitchReportsWithHotPathInfo // Step 0: query raw hitches
+//| take 10
 //ExpandedHothPath // Step 1: expand the hot path
+| summarize count() by 1
+
 //ParsedHotPath // Step 2: extract percent and sample count
 //FilteredHotPath // Step 3: remove low percent lines
 //HitchesWithSignature
