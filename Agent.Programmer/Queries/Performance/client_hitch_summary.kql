@@ -489,9 +489,19 @@ let TopHitchContribution = AggregateHitches
 
 //codeGenerateHotPathQuery
 
-hitchReportsWithHotPathInfo // Step 0: query raw hitches
-| summarize count(), make_set(HitchCategories) by tostring(HotPathSignature)
+let hitchReportsByCategory = hitchReportsWithHotPathInfo // Step 0: query raw hitches
+//| take 10
+| summarize HitchCount = count(), HitchCategories = make_set(HitchCategories) by tostring(HotPathSignature)
 //| where HotPathSignature contains "DetachParticleSystemsOnDeath_onDeath" | summarize sum(count_)
+| extend NormalizedCategories = iif(array_length(HitchCategories) == 0, dynamic(['None']), HitchCategories) // Assign 'None' if category set is empty
+| mv-expand HitchCategory = NormalizedCategories to typeof(string) // Expand categories; each hitch signature might contribute to multiple category counts
+| summarize TotalHitchCount = sum(HitchCount) by HitchCategory // Sum hitches per category
+| order by TotalHitchCount desc
+| render piechart with (title="Hitch Frequency by Category") // Render as pie chart
+//| summarize sum(HitchCount) by 1
+;
+
+hitchReportsByCategory
 
 //ParsedHotPath // Step 2: extract percent and sample count
 //FilteredHotPath // Step 3: remove low percent lines
