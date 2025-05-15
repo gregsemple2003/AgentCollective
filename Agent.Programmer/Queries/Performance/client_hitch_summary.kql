@@ -1,0 +1,299 @@
+﻿
+// This configures how many of the bottom stack frames to use when creating the hitch signature.
+// More symbols means more context, but greater chance of fragmenting this hitch into multiple
+// buckets if it has multiple diffrent callers.
+let maxBottomSymbols = 20;
+
+// This configures how deeply we want to explore the hotpath (highest % chain of children),
+// when calculating the hitch signature.  The lower you set it, the more likely you'll 
+// get less relevant parts of the hotpath in the signature.  The higher you set it,
+// the less interesting information you'll see.
+let minPercentForHotPath = 30.0;
+
+// FILTERS (for debug queries)
+let hitchContainsText = "";
+let hitchTimeAgo = ago(14d);
+let hitchUserName = "";
+let hitchExcludedUsers = dynamic(["AudioHead2001", "aoaofthefire", "Kufaz", "GSSteamTester11"]);
+
+// Step 0: Query a bunch of hitch reports 
+let HitchReports = GameServerLogs
+//| where Profile has "greg"
+| where isnull(hitchTimeAgo) or TimeGenerated > hitchTimeAgo
+| where Message endswith "Client hitch"
+| extend HitchTimeMillis = todouble(
+    extract(
+        @"\""realTime\""\s*:\s*\""\s*([\d\.]+)\s*ms",
+        1,
+        tostring(JsonDetails)
+    )
+)
+| serialize
+| extend HitchId = hash_md5(strcat(Host, "_", TimeGenerated))
+// | where JsonDetails contains ""
+//| where JsonDetails contains_cs "hotPath"
+// | where JsonDetails !contains "ActiveSceneChanged" // Filter loading hitches.
+//     and JsonDetails !contains "Unity.exe"
+//     and JsonDetails !contains "SetPlayerFocus"
+//     and JsonDetails !contains "UnloadSceneInternal"
+//     and JsonDetails !contains "Level_GenerateMinimap"
+//     and JsonDetails !contains "UpdatePreloading"
+//     and JsonDetails !contains "RestZoneScheduledUnloadAsync"
+| extend JsonText = tostring(JsonDetails)
+| project-away JsonDetails
+| extend CPU              = extract(@"""processorType""\s*:\s*""(.*?)""", 1, JsonText)
+| extend CPUFrequency     = extract(@"""processorFrequency""\s*:\s*(.*?),", 1, JsonText)
+| extend CPUProcessorCount= extract(@"""processorCount""\s*:\s*(.*?),", 1, JsonText)
+| extend CPU              = strcat(CPU, " freq=", CPUFrequency, ", processors=", CPUProcessorCount)
+| extend GPU              = extract(@"""gpu""\s*:\s*""(.*?)""", 1, JsonText)
+| extend GPUVRAM          = extract(@"""maxVramMemory""\s*:\s*(.*?)[,}]", 1, JsonText)
+| extend GPU              = strcat(GPU, " vram=", GPUVRAM)
+| extend UserName           = extract(@"\""userName\""\s*:\s*\""(.*?)\""", 1, JsonText)
+| extend Scene           = extract(@"\""scene\""\s*:\s*\""(.*?)\""", 1, JsonText)
+| extend PlayfabId       = extract(@"\""playfabID\""\s*:\s*\""(.*?)\""", 1, JsonText)
+| extend ClientSessionId = extract(@"\""clientSessionID\""\s*:\s*\""(.*?)\""", 1, JsonText)
+| project-reorder TimeGenerated, Host, HitchId, Scene, PlayfabId, UserName, ClientSessionId, JsonText
+//| where isempty(hitchContainsText) or JsonText contains hitchContainsText // DEBUGGING
+//| where isempty(hitchUserName) or UserName contains hitchUserName // DEBUGGING
+//| where UserName !in (hitchExcludedUsers)
+| extend HotPathArray = extractjson("$.hotPath", JsonText, typeof(dynamic))
+//| where isnotnull(HotPathArray) and gettype(HotPathArray) == "array" 
+;
+
+// Step 1: Expand each row, tagging row/line order
+let ExpandedHothPath = HitchReports
+| mv-expand with_itemindex=HotPathIndex HotPathLine = HotPathArray to typeof(string)
+| project-away HotPathArray
+| project-reorder HitchId, HotPathIndex, HotPathLine, JsonText
+;
+
+// Step 2: Extract callstack info (SampleCount, Percent, FunctionName, ModulePath) per line
+let ParsedHotPath = ExpandedHothPath
+| extend SampleCount = extract(
+    @"^\s*\[(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?%)\].*",
+    1,
+    HotPathLine
+)
+| extend SampleCount = todouble(SampleCount)
+| extend Percent = extract(
+    @"^\s*\[(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?%)\].*",
+    2, HotPathLine
+)
+| extend Percent = todouble(replace_string(Percent, "%", ""))
+| extend FunctionName = extract(
+    @"\]\s*(?<FunctionName>[^()]+)\(\)",  // The regular expression
+    1,                       // Name of the capture group
+    HotPathLine                           // The string to parse
+)
+| extend FunctionName = coalesce(iif(strlen(FunctionName) == 0, "<unknown>", FunctionName), "<unknown>")
+| extend FunctionName = replace_regex(FunctionName, "[0-9a-fA-F-]{8,}", "<guid>")
+| extend ModulePath = extract(
+    @"\(\)\s*(?<ModulePath>.*)$",  // Regex to capture everything after literal "()"
+    1,
+    HotPathLine
+)
+| extend ModulePath = coalesce(iif(strlen(ModulePath) == 0, "<unknown>", ModulePath), "<unknown>")
+| extend IsCallstackLine = iif(HotPathLine contains "callstackTree", true, false)
+| extend FrameCategory = case(
+    // GPU
+    FunctionName contains "WaitForLastPresentation" and Percent > 50, "GPU",
+    FunctionName contains "WaitForPendingPresent" and Percent > 50, "GPU",
+    FunctionName contains "EndGraphicsJobs" and Percent > 50, "GPU",
+
+    // Render
+    FunctionName contains "PlayerRender" and Percent > 50, "Render",
+
+    // UI
+    FunctionName contains "UIPanel_Open" and Percent > 50, "UI",
+    FunctionName contains "EpochInputManager_HandleButtonPress" and Percent > 50, "UI",
+    FunctionName contains "EpochInputManager_Update" and Percent > 50, "UI",
+    FunctionName contains "SetRequestedResolution" and Percent > 50, "UI",
+    FunctionName contains "UI::InitializeCanvasManager" and Percent > 50, "UI",
+    FunctionName contains "RewiredStandaloneInputModule_Process" and Percent > 50, "UI",
+    FunctionName contains "U3CProcessInput" and Percent > 50, "UI", // compiler-generated yield code for IEnumerable ProcessInput
+
+    // Load
+    FunctionName contains "Resources_Load" and Percent > 50, "Load",
+    FunctionName contains "AssetBundleManager_Load" and Percent > 50, "Load",
+
+    // GC
+    FunctionName contains "GC_collect" and Percent > 50, "GC",
+
+    // Gameplay
+    FunctionName contains "GeneratedMessageRouter_RouteMessage" and Percent > 50, "Gameplay",
+    FunctionName contains "UpdateSystem_Update" and Percent > 50, "Gameplay",
+    FunctionName contains "UpdateSystem_LateUpdate" and Percent > 50, "Gameplay",
+    FunctionName contains "ClientNetworkService_ReceiveCallback" and Percent > 50, "Gameplay",
+
+    // Particles 
+    FunctionName contains "ParticleSystem" and Percent > 50, "Particles",
+
+    // Steam
+    FunctionName contains "Steam_" and Percent > 50, "Steam",
+
+    // Physics
+    FunctionName contains "Simulate@PhysicsManager" and Percent > 50, "Physics",
+
+    
+    "Other"
+  )
+| project-reorder HitchId, SampleCount, Percent, FunctionName, FrameCategory, ModulePath, IsCallstackLine, HotPathLine
+;
+
+// Step 3: Filter lines to frames that are part of the hot path.
+let FilteredHotPath = ParsedHotPath
+| where Percent > minPercentForHotPath
+| project-reorder HitchId
+;
+
+// Step 4: Calculate the hitch signature, the frames that are closest to the bottom while also providing enough context.
+let HitchesWithSignature = FilteredHotPath
+| order by HitchId asc, HotPathIndex desc
+| summarize 
+    HitchSignature = make_list(tostring(FunctionName), maxBottomSymbols), 
+    HitchCategories = make_set(FrameCategory),
+    Host = any(Host), 
+    Profile = any(Profile),
+    PlayfabId = any(PlayfabId), 
+    ClientSessionId = any(ClientSessionId), 
+    Scene = any(Scene), 
+    HitchTimeMillis = any(HitchTimeMillis), 
+    TimeGenerated = any(TimeGenerated),
+    UserName = any(UserName)
+    by HitchId
+| extend HitchSignature = array_reverse(HitchSignature)
+| extend HitchSignature = strcat_array(HitchSignature, "\n")
+| extend HitchGroupId = hash_md5(HitchSignature)
+| extend HitchCategories = set_difference(HitchCategories, dynamic(["Other"]))
+| project-reorder HitchId, HitchSignature, HitchCategories, HitchGroupId, HitchTimeMillis
+;
+
+// Step 4 (DEBUG VERSION), includes original json for verification
+let HitchesWithSignatureWithOriginalJson = HitchesWithSignature 
+| join kind=inner HitchReports on HitchId
+| project-reorder HitchId, HitchTimeMillis, HitchSignature, JsonText, UserName
+;
+
+// Step 5: Aggregate hitches and calculate counts and average per hitch signature
+let AggregateHitches = HitchesWithSignature
+| summarize 
+    HitchCount = count(), 
+    Hosts = make_set(Host),
+    Profiles = make_set(Profile),
+    UserNames = make_set(UserName),
+    Scenes = make_set(Scene),
+    HitchCategories = make_set(HitchCategories),
+    AverageMillis = avg(HitchTimeMillis), 
+    MinMillis = min(HitchTimeMillis), 
+    MaxMillis = max(HitchTimeMillis), 
+    NumAccountsAffected = dcount(PlayfabId), 
+    HitchGroupId = any(HitchGroupId)
+    by HitchSignature
+| sort by HitchCount desc
+| project-reorder HitchSignature, HitchCount, HitchCategories, MinMillis, AverageMillis, MaxMillis
+;
+
+// Compute session durations for all Hosts with hitches
+let SessionDurations = GameServerLogs
+| where Host in (HitchReports | summarize by Host)
+| summarize MinTime = min(TimeGenerated), MaxTime = max(TimeGenerated) by Host
+| extend SessionDurationHours = (MaxTime - MinTime) / 1h
+;
+
+let AggregateHitchesWithDurations = AggregateHitches
+| mv-expand Hosts to typeof(string)
+| join kind=inner SessionDurations on $left.Hosts == $right.Host
+| summarize 
+    TotalSessionHours = sum(SessionDurationHours), 
+    HitchCount = any(HitchCount), 
+    AverageMillis = any(AverageMillis), 
+    MinMillis = any(MinMillis), 
+    MaxMillis = any(MaxMillis), 
+    NumAccountsAffected = any(NumAccountsAffected), 
+    HitchCategories = make_set(HitchCategories),
+    HitchGroupId = any(HitchGroupId)
+    by HitchSignature
+    //by HitchSignature
+| extend HitchesPerHour = HitchCount / TotalSessionHours
+| project-away TotalSessionHours
+| project-reorder HitchSignature, HitchesPerHour, HitchCount, HitchCategories
+| sort by HitchesPerHour desc
+;
+
+let AggregateHitchesBySession = HitchesWithSignature
+| summarize min(TimeGenerated), max(TimeGenerated), HitchCount = count(), AverageMillis = avg(HitchTimeMillis), MinMillis = min(HitchTimeMillis), MaxMillis = max(HitchTimeMillis), NumAccountsAffected = dcount(PlayfabId), HitchGroupId = any(HitchGroupId) by HitchSignature, ClientSessionId
+| sort by HitchCount desc
+;
+
+let TopHitchContribution = AggregateHitches
+| serialize 
+| extend SeverityNo = row_number()
+| summarize TotalHitchCount = sum(HitchCount), TopHitchCount = sumif(HitchCount, SeverityNo <= 10) by 1
+| extend TopHitchRatio = todouble(TopHitchCount) / TotalHitchCount
+;
+
+// GameServerLogs
+// | where isnull(hitchTimeAgo) or TimeGenerated > hitchTimeAgo
+// | where Host !contains "town"
+// | summarize count(), min(TimeGenerated), max(TimeGenerated) by Session
+// | extend PlaytimeHours = (max_TimeGenerated - min_TimeGenerated) / 1h
+// | project-reorder min_TimeGenerated, PlaytimeHours
+// | summarize sum(PlaytimeHours) by bin(min_TimeGenerated, 1d)
+// | render timechart 
+
+// GameServerLogs
+// | where isnull(hitchTimeAgo) or TimeGenerated > hitchTimeAgo
+// | where Host !contains "town"
+// | where Message contains "ServerNetworkService adding a new connection from"
+// | summarize count() by bin(TimeGenerated, 1d), Profile
+// //| project-reorder TimeGenerated, Message
+// // | summarize count(), min(TimeGenerated), max(TimeGenerated) by Session
+// // | extend PlaytimeHours = (max_TimeGenerated - min_TimeGenerated) / 1h
+// // | summarize sum(PlaytimeHours) by bin(min_TimeGenerated, 1d)
+// | render timechart 
+
+HitchReports // Step 0: query raw hitches
+| summarize count() by 1
+//ExpandedHothPath // Step 1: expand the hot path
+//ParsedHotPath // Step 2: extract percent and sample count
+//FilteredHotPath // Step 3: remove low percent lines
+//HitchesWithSignature
+//HitchesWithSignatureWithOriginalJson // Step 4
+//AggregateHitches // Step 5
+//AggregateHitchesWithDurations
+//TopHitchContribution
+//AggregateHitchesBySession
+
+//FindHitchByLocator
+
+// Report on hitches custom
+// GameServerLogs
+// | where TimeGenerated > ago(3h)
+// | where Message endswith "Client hitch"
+// | extend HitchTimeMillis = todouble(
+//     extract(
+//         @"\""realTime\""\s*:\s*\""\s*([\d\.]+)\s*ms",
+//         1,
+//         tostring(JsonDetails)
+//     )
+// )
+// | extend Scene = extract(@"\""scene\""\s*:\s*\""(.*?)\""", 1, tostring(JsonDetails))
+// | extend Variant = extract(@'"sceneVariant":(.*?),', 1, tostring(JsonDetails))
+// | project-reorder TimeGenerated, HitchTimeMillis, Scene, Variant, JsonDetails
+// | sort by HitchTimeMillis desc
+
+// // Report on hitches from a specific hitch group id
+// let hitchGroupId = "e57c887a8194957b1f1f308aa6e18b38";
+// HitchesWithSignatureWithOriginalJson
+// | where HitchGroupId has hitchGroupId
+// | sort by TimeGenerated desc
+// | take 100
+
+// AggregateHitches
+// | extend NormalizedCategories = iif(array_length(HitchCategories) == 0, dynamic(['None']), HitchCategories) // Assign 'None' if category set is empty
+// | where HitchCategories has "GC"
+// //| mv-expand HitchCategory = NormalizedCategories to typeof(string) // Expand categories; each hitch signature might contribute to multiple category counts
+// //| summarize TotalHitchCount = sum(HitchCount) by HitchCategory // Sum hitches per category
+// //| order by TotalHitchCount desc
+// //| render piechart with (title="Hitch Frequency by Category") // Render as pie chart
+// //| summarize sum(HitchCount) by 1
