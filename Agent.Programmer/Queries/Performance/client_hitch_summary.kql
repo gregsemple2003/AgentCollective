@@ -1,4 +1,4 @@
-﻿
+﻿set query_plan = 'detailed';
 // This configures how many of the bottom stack frames to use when creating the hitch signature.
 // More symbols means more context, but greater chance of fragmenting this hitch into multiple
 // buckets if it has multiple diffrent callers.
@@ -61,22 +61,130 @@ let baseHitchReports = GameServerLogs
 //| where isnotnull(HotPathArray) and gettype(HotPathArray) == "array" 
 ;
 
+//------------------------------------------------------------------------------------------
+// Hitch reports - append hot path metadata
+//------------------------------------------------------------------------------------------
+let parseHotPath = (raw:string)
+{
+    bag_pack(
+        // e.g. "[26.0 / 100.0%] …"
+        'sampleCount', todouble(extract(@"^\[(\d+(\.\d+)?)",                   1, raw)),
+        'percent',     todouble(extract(@"^\[\d+(\.\d+)? / (\d+(\.\d+)?)%",    2, raw)),
+        // e.g. "UnityMain()"
+        'function',    trim_end('()', extract(@"%] ([^(]+)\(",                1, raw)),
+        // e.g. "UnityPlayer.dll"
+        'module',      extract(@"\(([^)]+)\)\s*$",                            1, raw)
+    )
+};
+
+let maxHotPathArraySize = 40;
+let codeGenerateHotPathQuery = range idx from 0 to (maxHotPathArraySize-1) step 1
+| extend assignstmt = strcat(
+    "| extend HotPathInfo", idx, " = parseHotPath(HotPathArray[", idx, "])"
+  )
+| extend iffstmt = strcat(
+    "iff(todouble(HotPathInfo", maxHotPathArraySize-idx, ".percent) > 30, pack_array(HotPathInfo", maxHotPathArraySize-idx, ".function), dynamic([]))",
+     iff(idx < (maxHotPathArraySize-1), ",", "")
+  )
+| project assignstmt, iffstmt
+;
+
 let hitchReportsWithHotPathInfo = baseHitchReports
-    | mv-apply                           // still per-row, never multiplies outer rows
-        with_itemindex = HotPathIndex    // keep the original order
-        HotPathLine    = HotPathArray to typeof(string) on (
-            
-        // ── 1. extract once into scalars ───────────────────────────────────────
-        extend sampleCount = todouble( extract(@"^\s*\[(\d+(?:\.\d+)?)\s*/", 1, HotPathLine) ),
-               percentStr  = extract(@"/\s*(\d+(?:\.\d+)?%)", 1, HotPathLine),
-               percent     = todouble( replace_string(percentStr, "%", "") ),
-               functionName= coalesce(
-                                extract(@"\]\s*([^()]+)\(\)", 1, HotPathLine), "<unknown>"),
-               modulePath  = coalesce(
-                                extract(@"\)\s*(.*)$", 1, HotPathLine), "<unknown>"),
-               isCallstackLine = HotPathLine contains "callstackTree",
+| extend HotPathInfo0 = parseHotPath(HotPathArray[0])
+| extend HotPathInfo1 = parseHotPath(HotPathArray[1])
+| extend HotPathInfo2 = parseHotPath(HotPathArray[2])
+| extend HotPathInfo3 = parseHotPath(HotPathArray[3])
+| extend HotPathInfo4 = parseHotPath(HotPathArray[4])
+| extend HotPathInfo5 = parseHotPath(HotPathArray[5])
+| extend HotPathInfo6 = parseHotPath(HotPathArray[6])
+| extend HotPathInfo7 = parseHotPath(HotPathArray[7])
+| extend HotPathInfo8 = parseHotPath(HotPathArray[8])
+| extend HotPathInfo9 = parseHotPath(HotPathArray[9])
+| extend HotPathInfo10 = parseHotPath(HotPathArray[10])
+| extend HotPathInfo11 = parseHotPath(HotPathArray[11])
+| extend HotPathInfo12 = parseHotPath(HotPathArray[12])
+| extend HotPathInfo13 = parseHotPath(HotPathArray[13])
+| extend HotPathInfo14 = parseHotPath(HotPathArray[14])
+| extend HotPathInfo15 = parseHotPath(HotPathArray[15])
+| extend HotPathInfo16 = parseHotPath(HotPathArray[16])
+| extend HotPathInfo17 = parseHotPath(HotPathArray[17])
+| extend HotPathInfo18 = parseHotPath(HotPathArray[18])
+| extend HotPathInfo19 = parseHotPath(HotPathArray[19])
+| extend HotPathInfo20 = parseHotPath(HotPathArray[20])
+| extend HotPathInfo21 = parseHotPath(HotPathArray[21])
+| extend HotPathInfo22 = parseHotPath(HotPathArray[22])
+| extend HotPathInfo23 = parseHotPath(HotPathArray[23])
+| extend HotPathInfo24 = parseHotPath(HotPathArray[24])
+| extend HotPathInfo25 = parseHotPath(HotPathArray[25])
+| extend HotPathInfo26 = parseHotPath(HotPathArray[26])
+| extend HotPathInfo27 = parseHotPath(HotPathArray[27])
+| extend HotPathInfo28 = parseHotPath(HotPathArray[28])
+| extend HotPathInfo29 = parseHotPath(HotPathArray[29])
+| extend HotPathInfo30 = parseHotPath(HotPathArray[30])
+| extend HotPathInfo31 = parseHotPath(HotPathArray[31])
+| extend HotPathInfo32 = parseHotPath(HotPathArray[32])
+| extend HotPathInfo33 = parseHotPath(HotPathArray[33])
+| extend HotPathInfo34 = parseHotPath(HotPathArray[34])
+| extend HotPathInfo35 = parseHotPath(HotPathArray[35])
+| extend HotPathInfo36 = parseHotPath(HotPathArray[36])
+| extend HotPathInfo37 = parseHotPath(HotPathArray[37])
+| extend HotPathInfo38 = parseHotPath(HotPathArray[38])
+| extend HotPathInfo39 = parseHotPath(HotPathArray[39])
+
+    | extend HotPathSignatureArray = array_slice(
+        array_concat(
+            iff(todouble(HotPathInfo0.percent) > 30, pack_array(HotPathInfo0.function), dynamic([])),
+            iff(todouble(HotPathInfo1.percent) > 30, pack_array(HotPathInfo1.function), dynamic([])),
+            iff(todouble(HotPathInfo2.percent) > 30, pack_array(HotPathInfo2.function), dynamic([])),
+            iff(todouble(HotPathInfo3.percent) > 30, pack_array(HotPathInfo3.function), dynamic([])),
+            iff(todouble(HotPathInfo4.percent) > 30, pack_array(HotPathInfo4.function), dynamic([])),
+            iff(todouble(HotPathInfo5.percent) > 30, pack_array(HotPathInfo5.function), dynamic([])),
+            iff(todouble(HotPathInfo6.percent) > 30, pack_array(HotPathInfo6.function), dynamic([])),
+            iff(todouble(HotPathInfo7.percent) > 30, pack_array(HotPathInfo7.function), dynamic([])),
+            iff(todouble(HotPathInfo8.percent) > 30, pack_array(HotPathInfo8.function), dynamic([])),
+            iff(todouble(HotPathInfo9.percent) > 30, pack_array(HotPathInfo9.function), dynamic([])),
+            iff(todouble(HotPathInfo10.percent) > 30, pack_array(HotPathInfo10.function), dynamic([])),
+            iff(todouble(HotPathInfo11.percent) > 30, pack_array(HotPathInfo11.function), dynamic([])),
+            iff(todouble(HotPathInfo12.percent) > 30, pack_array(HotPathInfo12.function), dynamic([])),
+            iff(todouble(HotPathInfo13.percent) > 30, pack_array(HotPathInfo13.function), dynamic([])),
+            iff(todouble(HotPathInfo14.percent) > 30, pack_array(HotPathInfo14.function), dynamic([])),
+            iff(todouble(HotPathInfo15.percent) > 30, pack_array(HotPathInfo15.function), dynamic([])),
+            iff(todouble(HotPathInfo16.percent) > 30, pack_array(HotPathInfo16.function), dynamic([])),
+            iff(todouble(HotPathInfo17.percent) > 30, pack_array(HotPathInfo17.function), dynamic([])),
+            iff(todouble(HotPathInfo18.percent) > 30, pack_array(HotPathInfo18.function), dynamic([])),
+            iff(todouble(HotPathInfo19.percent) > 30, pack_array(HotPathInfo19.function), dynamic([])),
+            iff(todouble(HotPathInfo20.percent) > 30, pack_array(HotPathInfo20.function), dynamic([])),
+            iff(todouble(HotPathInfo21.percent) > 30, pack_array(HotPathInfo21.function), dynamic([])),
+            iff(todouble(HotPathInfo22.percent) > 30, pack_array(HotPathInfo22.function), dynamic([])),
+            iff(todouble(HotPathInfo23.percent) > 30, pack_array(HotPathInfo23.function), dynamic([])),
+            iff(todouble(HotPathInfo24.percent) > 30, pack_array(HotPathInfo24.function), dynamic([])),
+            iff(todouble(HotPathInfo25.percent) > 30, pack_array(HotPathInfo25.function), dynamic([])),
+            iff(todouble(HotPathInfo26.percent) > 30, pack_array(HotPathInfo26.function), dynamic([])),
+            iff(todouble(HotPathInfo27.percent) > 30, pack_array(HotPathInfo27.function), dynamic([])),
+            iff(todouble(HotPathInfo28.percent) > 30, pack_array(HotPathInfo28.function), dynamic([])),
+            iff(todouble(HotPathInfo29.percent) > 30, pack_array(HotPathInfo29.function), dynamic([])),
+            iff(todouble(HotPathInfo30.percent) > 30, pack_array(HotPathInfo30.function), dynamic([])),
+            iff(todouble(HotPathInfo31.percent) > 30, pack_array(HotPathInfo31.function), dynamic([])),
+            iff(todouble(HotPathInfo32.percent) > 30, pack_array(HotPathInfo32.function), dynamic([])),
+            iff(todouble(HotPathInfo33.percent) > 30, pack_array(HotPathInfo33.function), dynamic([])),
+            iff(todouble(HotPathInfo34.percent) > 30, pack_array(HotPathInfo34.function), dynamic([])),
+            iff(todouble(HotPathInfo35.percent) > 30, pack_array(HotPathInfo35.function), dynamic([])),
+            iff(todouble(HotPathInfo36.percent) > 30, pack_array(HotPathInfo36.function), dynamic([])),
+            iff(todouble(HotPathInfo37.percent) > 30, pack_array(HotPathInfo37.function), dynamic([])),
+            iff(todouble(HotPathInfo38.percent) > 30, pack_array(HotPathInfo38.function), dynamic([])),
+            iff(todouble(HotPathInfo39.percent) > 30, pack_array(HotPathInfo39.function), dynamic([]))
+        ),
+        0, 15   // take the first 7 functions (starting from index 19) whose percent > 30
+    )
+    | extend HotPathSignature = strcat_array(array_reverse(HotPathSignatureArray), '\n')
 
 ;
+
+
+
+
+
+
 
 // Step 1: Expand each row, tagging row/line order
 let ExpandedHothPath = baseHitchReports 
@@ -270,10 +378,17 @@ let TopHitchContribution = AggregateHitches
 // // | summarize sum(PlaytimeHours) by bin(min_TimeGenerated, 1d)
 // | render timechart 
 
+//codeGenerateHotPathQuery
+
 hitchReportsWithHotPathInfo // Step 0: query raw hitches
-//| take 10
+// | take 10
+// | project-reorder TimeGenerated, HotPathArray, HotPathSignature
+//| extend HotPathArraySize = array_length(HotPathArray)
+//| where HotPathArraySize > 150
+| summarize count() by tostring(HotPathSignature)
+//| sort by HotPathArraySize desc
 //ExpandedHothPath // Step 1: expand the hot path
-| summarize count() by 1
+//| summarize count() by 1
 
 //ParsedHotPath // Step 2: extract percent and sample count
 //FilteredHotPath // Step 3: remove low percent lines
