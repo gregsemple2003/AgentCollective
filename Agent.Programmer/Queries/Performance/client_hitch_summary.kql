@@ -1,5 +1,4 @@
-﻿set query_plan = 'detailed';
-// This configures how many of the bottom stack frames to use when creating the hitch signature.
+﻿// This configures how many of the bottom stack frames to use when creating the hitch signature.
 // More symbols means more context, but greater chance of fragmenting this hitch into multiple
 // buckets if it has multiple diffrent callers.
 let maxBottomSymbols = 20;
@@ -14,10 +13,10 @@ let minPercentForHotPath = 30.0;
 let hitchContainsText = "";
 let hitchTimeAgo = ago(14d);
 let hitchUserName = "";
-let hitchExcludedUsers = dynamic(["AudioHead2001", "aoaofthefire", "Kufaz", "GSSteamTester11"]);
+let hitchExcludedUsers = dynamic(["GSSteamTester11"]);
 
 // Step 0: Query a bunch of hitch reports 
-let baseHitchReports = GameServerLogs
+let hitchReportsRaw = GameServerLogs
 //| where Profile has "greg"
 | where isnull(hitchTimeAgo) or TimeGenerated > hitchTimeAgo
 | where Message endswith "Client hitch"
@@ -57,7 +56,7 @@ let baseHitchReports = GameServerLogs
 | project-reorder TimeGenerated, Host, HitchId, Scene, PlayfabId, UserName, ClientSessionId
 //| where isempty(hitchContainsText) or JsonText contains hitchContainsText // DEBUGGING
 //| where isempty(hitchUserName) or UserName contains hitchUserName // DEBUGGING
-//| where UserName !in (hitchExcludedUsers)
+| where UserName !in (hitchExcludedUsers)
 //| where isnotnull(HotPathArray) and gettype(HotPathArray) == "array" 
 ;
 
@@ -143,7 +142,7 @@ let codeGenerateHotPathQuery = range idx from 0 to (maxHotPathArraySize-1) step 
 ;
 //codeGenerateHotPathQuery
 
-let hitchReportsWithHotPathInfo = baseHitchReports
+let hitchReportsWithSignature = hitchReportsRaw
 | extend HotPathInfo0 = parseHotPath(HotPathArray[0])
 | extend HotPathInfo1 = parseHotPath(HotPathArray[1])
 | extend HotPathInfo2 = parseHotPath(HotPathArray[2])
@@ -296,7 +295,7 @@ let hitchReportsWithHotPathInfo = baseHitchReports
 
 
 // Step 1: Expand each row, tagging row/line order
-let ExpandedHothPath = baseHitchReports 
+let ExpandedHothPath = hitchReportsRaw 
 | mv-expand with_itemindex=HotPathIndex HotPathLine = HotPathArray to typeof(string)
 | project-away HotPathArray
 | project-reorder HitchId, HotPathIndex, HotPathLine
@@ -405,7 +404,7 @@ let HitchesWithSignature = FilteredHotPath
 
 // // Step 4 (DEBUG VERSION), includes original json for verification
 // let HitchesWithSignatureWithOriginalJson = HitchesWithSignature 
-// | join kind=inner baseHitchReports on HitchId
+// | join kind=inner hitchReportsRaw on HitchId
 // | project-reorder HitchId, HitchTimeMillis, HitchSignature, JsonText, UserName
 // ;
 
@@ -430,7 +429,7 @@ let AggregateHitches = HitchesWithSignature
 
 // Compute session durations for all Hosts with hitches
 let SessionDurations = GameServerLogs
-| where Host in (baseHitchReports | summarize by Host)
+| where Host in (hitchReportsRaw | summarize by Host)
 | summarize MinTime = min(TimeGenerated), MaxTime = max(TimeGenerated) by Host
 | extend SessionDurationHours = (MaxTime - MinTime) / 1h
 ;
@@ -489,9 +488,40 @@ let TopHitchContribution = AggregateHitches
 
 //codeGenerateHotPathQuery
 
-let hitchReportsByCategory = hitchReportsWithHotPathInfo // Step 0: query raw hitches
+let hitchReportsBySignature = hitchReportsWithSignature // Step 0: query raw hitches
+| summarize HitchCount = count(), 
+            HitchCategories = make_set(HitchCategories),
+            AverageMillis = avg(HitchTimeMillis), 
+            MinMillis = min(HitchTimeMillis), 
+            MaxMillis = max(HitchTimeMillis),
+            NumUsersAffected = dcount(PlayfabId)
+            by tostring(HotPathSignature)
+;
+
+let targetHitchCategory = "GPU";
+let hitchReportsInCategory = materialize(hitchReportsWithSignature // Step 0: query raw hitches
+| where HitchCategories has targetHitchCategory
+| summarize HitchCount = count(), 
+            HitchCategories = make_set(HitchCategories),
+            AverageMillis = avg(HitchTimeMillis), 
+            MinMillis = min(HitchTimeMillis), 
+            MaxMillis = max(HitchTimeMillis),
+            NumUsersAffected = dcount(PlayfabId)
+            by UserName, GPU
+);
+let totalHitchReports = toscalar(hitchReportsInCategory | summarize sum(HitchCount));
+let hitchReportsByUser = hitchReportsInCategory
+| top 25 by HitchCount desc                   // (optional) only show the top N
+| extend HitchShare = 100.0 * HitchCount / totalHitchReports
+| extend UserName = strcat(UserName, " / ", GPU)
+| project UserName, HitchShare                // 1st column = X axis, 2nd = Y
+| render barchart                           // vertical bars; use barchart for horizontal
+        with (title = strcat(targetHitchCategory, " hitch share by user (%)"),
+              yaxis = linear)
+;
+
+let hitchReportsByCategory = hitchReportsBySignature // Step 0: query raw hitches
 //| take 10
-| summarize HitchCount = count(), HitchCategories = make_set(HitchCategories) by tostring(HotPathSignature)
 //| where HotPathSignature contains "DetachParticleSystemsOnDeath_onDeath" | summarize sum(count_)
 | extend NormalizedCategories = iif(array_length(HitchCategories) == 0, dynamic(['None']), HitchCategories) // Assign 'None' if category set is empty
 | mv-expand HitchCategory = NormalizedCategories to typeof(string) // Expand categories; each hitch signature might contribute to multiple category counts
@@ -501,7 +531,10 @@ let hitchReportsByCategory = hitchReportsWithHotPathInfo // Step 0: query raw hi
 //| summarize sum(HitchCount) by 1
 ;
 
-hitchReportsByCategory
+//hitchReportsByCategory
+hitchReportsBySignature
+//hitchReportsByUser
+
 
 //ParsedHotPath // Step 2: extract percent and sample count
 //FilteredHotPath // Step 3: remove low percent lines
