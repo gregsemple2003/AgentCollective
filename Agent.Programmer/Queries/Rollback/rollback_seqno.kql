@@ -1,0 +1,79 @@
+﻿//-------------------------------------------------------------------------
+// Parameters
+//-------------------------------------------------------------------------
+let targetAccount = "9B3EB06BA7F5E067";
+let startTime = ago(3d);
+
+//-------------------------------------------------------------------------
+// Raw query to get write operations
+//-------------------------------------------------------------------------
+let rollbackQueryRaw = GameServerLogs
+| where TimeGenerated > startTime
+| where Message contains "operation completed"
+| where isnotempty(targetAccount) and JsonDetails contains targetAccount
+| extend d = parse_json(JsonDetails) 
+| extend
+    MasterAccountId = tostring(d.MasterPlayerAccountId),
+    EntityId = tostring(d.EntityId),
+    SeqNo = toint(d.Details.seqNo),
+    Operation = tostring(d.Operation),
+    Category = tostring(d.Category)
+| where Operation has "Update" // or Operation has "Load"
+| where Category !endswith "charactersummary"
+| project-reorder TimeGenerated, MasterAccountId, EntityId, Category, Operation, SeqNo, Message, JsonDetails
+;
+
+//-------------------------------------------------------------------------
+// Partition writes and look at whether seqno is strictly increasing
+//-------------------------------------------------------------------------
+let rollbackSeqnoQuery = rollbackQueryRaw
+//| where Category has "data.cosmos.stash" // DEBUGGING
+| project TimeGenerated, ActiveScene, MasterAccountId, EntityId, Category, Operation, SeqNo, GameVersion, Profile, Host, PlayerCount
+| partition hint.strategy=native by GameVersion
+    (
+    partition hint.strategy=native by MasterAccountId
+        (
+        partition hint.strategy=native by EntityId
+            (
+            sort by TimeGenerated asc
+            | extend Delta = SeqNo - prev(SeqNo), prevVersion = prev(GameVersion)
+            )
+        )
+    )
+| where isnotempty(Delta) and isnotnull(Delta) //and Delta < 0
+| sort by TimeGenerated asc
+;
+
+//-------------------------------------------------------------------------
+// Bazaar records (or whatever)
+//-------------------------------------------------------------------------
+let playerLogsQuery = GameServerLogs
+| where TimeGenerated > startTime
+| where JsonDetails has "PlayerId"
+| extend PlayerId = tostring(JsonDetails['PlayerId'])
+| where PlayerId == "9B3EB06BA7F5E067"
+| project-reorder TimeGenerated, ActiveScene, AllocationId, Message, JsonDetails
+//| top 10000 by TimeGenerated desc 
+| project TimeGenerated, Message, JsonDetails
+;
+
+rollbackSeqnoQuery
+//playerLogsQuery
+
+ 
+// let dataOperationsWithBazaar = union kind = outer
+// (
+//     rollbackSeqnoQuery
+//     | extend Source = "DataOperation"        // optional – tag the row origin
+// ),
+// (
+//     playerLogsQuery
+//     | extend Source = "BazaarRecord"           // optional – tag the row origin
+// )
+// | sort by TimeGenerated asc                  // or desc if you prefer newest first
+// | project-reorder TimeGenerated, Source, JsonDetails
+// ;
+//dataOperationsWithBazaar
+
+//rollbackQueryRaw
+//| summarize count() by Operation, Category, bin(TimeGenerated, 1d), ActiveScene
