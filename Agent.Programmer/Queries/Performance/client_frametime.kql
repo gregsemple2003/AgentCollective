@@ -1,13 +1,37 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Parameters – adjust as needed
 // ─────────────────────────────────────────────────────────────────────────────
-let startTime      = ago(60d);
+let startTime      = ago(10d);
 let targetFrameMs  = 50.0;          // "hitch" threshold in milliseconds
 let hitchBin       = 50.0;           // histogram bucket width (hitches per hour)
 let minSessionTime = 1.0;           // ignore <1 s sessions
 let maxSessionTime = 600.0;         // cap sessions at 10 min; set 0 to disable
 let minBucketSampleCount = 3;      // minimum number of sessions in a bucket or it will be dropped
 let targetProfiles = dynamic(["nightlyrelease"]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Function to sanitize the GPU name we get so that it matches our benchmark data
+// ─────────────────────────────────────────────────────────────────────────────
+let NormalizeGpu = (model:string, vramMaxGB:int)
+{
+    // Brand prefix removal (case-insensitive)
+    let base = trim(" ", replace_regex(model, @"(?i)^(NVIDIA\s+|AMD\s+)", ""));
+
+    // VRAM suffix for selected models
+    let needsVram = base in ("GeForce RTX 3060", "GeForce RTX 3050", "GeForce GTX 1060");
+    let candidate = iif(needsVram,
+        strcat(base, " ", tostring(vramMaxGB), "GB"),
+        base);
+
+    // Redirects (add more cases as needed)
+    case(
+        candidate == "GeForce GTX 1060 6GB", "GeForce GTX 1060 5GB",
+        candidate == "GeForce RTX 3050 Laptop GPU", "GeForce RTX 3050 4GB Laptop GPU",
+        candidate == "Custom GPU 0405 (RADV VANGOGH)", "Custom GPU 0405",
+        candidate == "Custom GPU 0932 (RADV VANGOGH)", "Custom GPU 0932",
+        candidate
+    )
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Base event pull
@@ -31,6 +55,9 @@ let frameMetricsQuery = baseEventQuery
 | extend MetricsId  = strcat(TimeGenerated, "_", PlayerClientSessionId)
 | extend d          = parse_json(JsonDetails)
 | extend MetricsTime = todouble(d.elapsedTimeSeconds)        // session time at this packet
+| extend GPU = tostring(d.processMetrics.systemInfo.gpu)
+| extend VramMaxGB = toint(round( todouble(d.processMetrics.systemInfo.maxVramMemory) / 1024.0 ))
+
 // | where  (MetricsTime >  minSessionTime)
 //    and  (maxSessionTime == 0.0 or MetricsTime < maxSessionTime)
 ;
@@ -121,15 +148,17 @@ let dailyHitchRate =
     | summarize
         Sessions           = count(),                     // how many packets in bucket
         Mean_HitchRate     = avg(HitchesPerHour),
-        Median_HitchRate   = percentile(HitchesPerHour, 50),
+        P50_HitchRate   = percentile(HitchesPerHour, 50),
+        P75_HitchRate      = percentile(HitchesPerHour, 75),
+        P95_HitchRate      = percentile(HitchesPerHour, 95),
         P99_HitchRate      = percentile(HitchesPerHour, 99)
         by Day = bin(TimeGenerated, 1d), Profile
     // optionally drop days with very few samples
     | where Sessions >= minBucketSampleCount
-    | project Day, Profile, Mean_HitchRate, P99_HitchRate
+    | project Day, Profile, P50_HitchRate, P75_HitchRate, P95_HitchRate, P99_HitchRate
     | render timechart
           with (
-              title  = strcat("Daily Hitch Rate – Mean vs P99  (>", tostring(targetFrameMs), " ms)"),
+              title  = strcat("Daily Hitch Rate – Percentiles  (>", tostring(targetFrameMs), " ms)"),
               ytitle = "Hitches per Hour",
               series = Profile
           )
@@ -141,25 +170,84 @@ let dailyHitchRate =
 let targetSessions = clientSessionIdToUnity6
 | distinct PlayerClientSessionId
 ;
-
 let dailyHitchRateUnity6 =
     hitchesPerEvent
     | join kind=inner (clientSessionIdToUnity6) on PlayerClientSessionId
     | summarize
           Sessions         = count(),
-          Mean_HitchRate   = avg(HitchesPerHour),
+          P50_HitchRate   = avg(HitchesPerHour),
           Median_HitchRate = percentile(HitchesPerHour, 50),
           P99_HitchRate    = percentile(HitchesPerHour, 99)
           by Day = bin(TimeGenerated, 1d)
     | where Sessions >= minBucketSampleCount
-    | project Day, Mean_HitchRate, P99_HitchRate
+    | project Day, P50_HitchRate, P99_HitchRate
     | render timechart
           with (title  = strcat("Daily Hitch Rate – Unity 6000.*, >", tostring(targetFrameMs), " ms"),
                  ytitle = "Hitches per Hour")
 ;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Avg-frame-time per *packet*  →  P50 / P99 across packets
+// ─────────────────────────────────────────────────────────────────────────────
+let packetFrameTimes =
+    frameMetricsQuery
+    | mv-expand d.frameTimeMetrics.buckets
+    | extend b = parse_json(d_frameTimeMetrics_buckets)
+    | extend
+        BucketN   = todouble(b.n),
+        BucketAvg = todouble(b.avg)
+    | where BucketN > 0 and isfinite(BucketAvg)
 
+    // weighted mean for this packet (MetricsId)
+    | extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
+    | join kind=leftouter (GpuScores) on $left.NormalizedGpu == $right.Model
+    | summarize
+        Frames_thisPkt = sum(BucketN),
+        Ms_thisPkt     = sum(BucketN * BucketAvg)
+      by MetricsId, TimeGenerated, NormalizedGpu, Score
+    | where Frames_thisPkt > 0
+    | extend AvgFrameMs = Ms_thisPkt / Frames_thisPkt        // ← packet-level mean
+;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Percentiles across packets
+// ─────────────────────────────────────────────────────────────────────────────
+let frameTimePercentiles = packetFrameTimes
+| summarize
+      //Packets       = count(),
+      P50_FrameMs   = percentile(AvgFrameMs, 50),
+      P90_FrameMs   = percentile(AvgFrameMs, 90),
+      P99_FrameMs   = percentile(AvgFrameMs, 99),
+      P99_9_FrameMs   = percentile(AvgFrameMs, 99.9) 
+      by bin(Score, 5000)
+| render linechart
+      with (
+          title  = "Frame-time percentiles vs. GPU benchmark score",
+          xtitle = "GPU score (lower bound of 5 000-wide bin)",
+          ytitle = "Frame time (ms)"
+      )
+;
+
+//frameTimePercentiles
 //hitchHistogram
 //dailyHitchRate
 //serverUnity6Sessions
 //dailyHitchRateUnity6
+
+dailyHitchRate
+
+// frameMetricsQuery
+// | project GPU, VramMaxGB
+// | where GPU contains "VANG"
+// | summarize count() by GPU
+//| extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
+//| join kind=leftouter (GpuScores) on $left.NormalizedGpu == $right.Model
+// | where isempty(Score)
+// //| count
+// | summarize count() by 1 //NormalizedGpu, VramMaxGB
+ 
+
+// GpuScores
+// | where Model contains "6800"
+// | extend Model = 
+// 

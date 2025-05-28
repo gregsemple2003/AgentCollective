@@ -1,6 +1,7 @@
 ﻿//-------------------------------------------------------------------------
 // Parameters
 //-------------------------------------------------------------------------
+set query_results_cache_max_age = time(30m);
 
 // This configures how many of the bottom stack frames to use when creating the hitch signature.
 // More symbols means more context, but greater chance of fragmenting this hitch into multiple
@@ -15,7 +16,7 @@ let minPercentForHotPath = 30.0;
 
 // FILTERS (for debug queries)
 let hitchContainsText = "";
-let startTime = ago(14d);
+let hitchTimeAgo = ago(14d);
 let hitchUserName = "";
 let hitchExcludedUsers = dynamic(["GSSteamTester11"]);
 
@@ -24,7 +25,7 @@ let hitchExcludedUsers = dynamic(["GSSteamTester11"]);
 //-------------------------------------------------------------------------
 let hitchReportsRaw = GameServerLogs
 //| where Profile has "greg"
-| where isnull(startTime) or TimeGenerated > startTime
+| where isnull(hitchTimeAgo) or TimeGenerated > hitchTimeAgo
 | where Message endswith "Client hitch"
 | extend HitchTimeMillis = todouble(
     extract(
@@ -48,7 +49,8 @@ let hitchReportsRaw = GameServerLogs
 | extend PlayfabId       = extract(@"\""playfabID\""\s*:\s*\""(.*?)\""", 1, JsonText)
 | extend ClientSessionId = extract(@"\""clientSessionID\""\s*:\s*\""(.*?)\""", 1, JsonText)
 | extend HotPathArray = extractjson("$.hotPath", JsonText, typeof(dynamic))
-| project-away JsonText
+| extend GpuResults = extractjson("$.gpuResults", JsonText, typeof(dynamic))
+//| project-away JsonText // dump this column as soon as we can, its huge
 | project-reorder TimeGenerated, Host, HitchId, Scene, PlayfabId, UserName, ClientSessionId
 //| where isempty(hitchContainsText) or JsonText contains hitchContainsText // DEBUGGING
 //| where isempty(hitchUserName) or UserName contains hitchUserName // DEBUGGING
@@ -347,7 +349,7 @@ let hitchReportsByCategory = hitchReportsBySignature // Step 0: query raw hitche
 // Roll-up hitch reports by scene
 //------------------------------------------------------------------------------------------
 let hitchReportsByScene = hitchReportsWithSignature
-//| where HitchCategories has targetHitchCategory
+| where HitchCategories has targetHitchCategory
 | summarize HitchCount = count(), 
             HitchCategories = make_set(HitchCategories),
             AverageMillis = avg(HitchTimeMillis), 
@@ -357,20 +359,29 @@ let hitchReportsByScene = hitchReportsWithSignature
             by Scene
 ;
 
-//------------------------------------------------------------------------------------------
-// Roll-up playtime
-//------------------------------------------------------------------------------------------
-let playtime = GameServerLogs
-| where isnull(startTime) or TimeGenerated > startTime
-| where PlayerCount > 0
-| summarize DeltaTimeSeconds = (max(TimeGenerated) - min(TimeGenerated)) / 1s, PlayerCount = max(PlayerCount) by bin(TimeGenerated, 1m), Host, ActiveScene
-//| summarize sum(DeltaTimeSeconds) * PlayerCount by bin(TimeGenerated, 1d)
-| sort by TimeGenerated desc
-;
-
-
 //hitchReportsByCategory
 //hitchReportsBySignature
 //hitchReportsByUser
 //hitchReportsByScene
-playtime
+
+let targetPassName = "GPU";
+let maxPassTime = 500.0;
+
+hitchReportsWithSignature
+| where HitchCategories has "GPU"
+| mv-expand GpuPass = GpuResults.passes
+| extend PassName = tostring(GpuPass.passName),
+         LastTimeMs = todouble(GpuPass.lastTimeMs)
+| where PassName == targetPassName and isnotnull(LastTimeMs)
+| where LastTimeMs < 300
+| take 100
+// | summarize HitCount = count() by BucketMs = bin(LastTimeMs, 10.0)   // ← 10 ms
+// | order by BucketMs
+// | render columnchart
+//         with (
+//             title  = strcat(targetPassName, " pass-time distribution (10 ms bins)"),
+//             xtitle = "GPU pass time (ms)",
+//             ytitle = "Number of hitches",
+//             legend = hidden
+//         )
+// 

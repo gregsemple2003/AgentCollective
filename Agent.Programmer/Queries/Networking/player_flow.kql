@@ -1,0 +1,321 @@
+﻿// ─────────────────────────────────────────────────────────────────────────────
+// Parameters – adjust as needed
+// ─────────────────────────────────────────────────────────────────────────────
+//set query_results_cache_max_age = time(15m);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Server logs for a particular client session
+// ─────────────────────────────────────────────────────────────────────────────
+let ServerLogsForClientSession = (
+        clientSessionId:string,
+        lookback:timespan = 30d    // how far back to search
+)
+{
+    let startTime = now() - lookback;
+
+    // All hosts that ever touched that session within the look-back
+    let serverHostsInClientSession =
+        GameServerLogs
+        | where TimeGenerated > startTime
+        | where PlayerClientSessionId has clientSessionId
+        | distinct Host;
+
+
+    // All logs from those hosts in that window
+    GameServerLogs
+    | where TimeGenerated > startTime
+    | where Host in (serverHostsInClientSession)
+    | project-reorder TimeGenerated, Host, Level, Message, StackTrace, JsonDetails
+    | sort by TimeGenerated asc
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Server logs for a particular host around a particular time
+// ─────────────────────────────────────────────────────────────────────────────
+let ServerLogsBetweenTime = (
+        host:string,                 // e.g. "prod-prod-a-eu-west-787v5-rlx2l"
+        startTime:datetime,          // inclusive lower bound
+        endTime:datetime             // inclusive upper bound
+)
+{
+    GameServerLogs
+    | where Host == host
+    | where TimeGenerated between (startTime .. endTime)
+    | project-reorder TimeGenerated, Host, Level, Message, StackTrace, JsonDetails
+    | sort by TimeGenerated asc
+};
+
+let ServerLogsAroundTime = (
+        host:string,
+        pivot:datetime,
+        win:timespan = 10s      // default keeps the call site short
+)
+{
+    GameServerLogs
+    | where Host == host
+    | where TimeGenerated between (pivot - win .. pivot + win)
+    | project-reorder TimeGenerated, Host, Level, Message, StackTrace, JsonDetails
+    | sort by TimeGenerated asc
+};
+
+let AccountIdByClientSession = (clientSessionId:string, lookback:timespan = 30d)
+{
+    toscalar(ServerLogsForClientSession(clientSessionId, lookback)
+    // keep only rows that actually have a JSON payload
+    | where PlayerClientSessionId has clientSessionId
+    | where isnotempty(JsonDetails)
+    | extend details = todynamic(JsonDetails)
+    | extend MasterPlayerAccountId = tostring(details.MasterPlayerAccountId)
+    | where MasterPlayerAccountId != ""
+    | distinct MasterPlayerAccountId          // dedupe
+    | take 1)
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  All messages in a client-session that reference any of its connection-ids
+// ─────────────────────────────────────────────────────────────────────────────
+let ConnectionMessagesForClientSession = (
+        clientSessionId:string,
+        lookback:timespan = 30d
+)
+{
+    // 1. Figure out the master-account for this client-session
+    let accountId = AccountIdByClientSession(clientSessionId, lookback);
+
+    // 2. Collect every connection-id that appears in its "LoginWithAuthToken succeeded" lines
+    let connectionIds =
+        ServerLogsForClientSession(clientSessionId, lookback)
+        | where Message contains accountId
+        | where Message has "LoginWithAuthToken succeeded"
+        | parse Message
+                with *
+                     "LoginWithAuthToken succeeded: newEndpoint = " ConnectionId:long
+                     ", newUserIdentity = "  UserIdentity
+        | distinct tostring(ConnectionId)
+        | summarize make_list(ConnectionId);     // dynamic array of ids
+
+    // 3. Return *all* log lines that mention ANY of those ids
+    ServerLogsForClientSession(clientSessionId, lookback)
+    | where Message has_any (connectionIds)
+    | project TimeGenerated, Host, Level, Message, StackTrace
+    | sort by TimeGenerated asc
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Filter a table to Cosmos operations for a given account
+// ─────────────────────────────────────────────────────────────────────────────
+let CosmosOperations = (
+        T:(TimeGenerated:datetime,
+           Message:string,
+           JsonDetails:dynamic),          // declare only what you need
+        targetAccount:string,            // e.g. "9B3EB06BA7F5E067"
+        opKind:string = "Update"         // optional: "Update", "Load", etc.
+)
+{
+    T
+    | where Message contains "operation completed"
+    | where targetAccount != "" and JsonDetails contains targetAccount
+    | extend d = todynamic(JsonDetails)
+    | extend
+        MasterAccountId = tostring(d.MasterPlayerAccountId),
+        EntityId        = tostring(d.EntityId),
+        SeqNo           = toint(d.Details.seqNo),
+        Operation       = tostring(d.Operation),
+        Category        = tostring(d.Category)
+    //| where Operation has opKind                  // defaults to "Update"
+    | where Category !endswith "charactersummary" // trim noisy summaries
+    | project-reorder TimeGenerated, MasterAccountId, EntityId,
+                      Category, Operation, SeqNo, Message, JsonDetails
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+// Generate some logs of interest (disconnects)
+//ConnectionMessagesForClientSession("c70d5ce51f964816a92c117068eda5f8", 30d)
+//| where Message contains "Disconnected, reason:"
+//| where Message contains AccountIdByClientSession("c70d5ce51f964816a92c117068eda5f8", 30d)
+
+
+//https://app.clickup.com/t/42097836/QA-530965
+//ConnectionMessagesForClientSession("184c1c3012cf4a0c8661e8f31ae7a3fb", 30d)
+//ServerLogsBetweenTime("prod-prod-a-eu-west-787v5-rlx2l", datetime(2025-05-17 12:36:58.4856260Z), datetime(2025-05-17 12:39:43.2468690Z))
+//| where JsonDetails contains "Update"
+//| invoke CosmosOperations("E3464F90A60EDEF")      // opKind defaults to "Update"
+//| project TimeGenerated, Level, Message
+//| where Level has "error"
+//| where Message contains "642078835591289303"
+//| where Message contains "E3464F90A60EDEF" or JsonDetails contains "E3464F90A60EDEF"
+//| where Message contains AccountIdByClientSession("c70d5ce51f964816a92c117068eda5f8", 30d)
+
+//https://app.clickup.com/t/42097836/QA-530627
+// ConnectionMessagesForClientSession("65850fc45168490abace3ef0336f4cb7", 30d)
+// //| where Message contains "Disconnected, reason:"
+
+//https://app.clickup.com/t/42097836/QA-493603  6f9ad00b619844d79e6ca1003392dabc A0C111E2A8DF75D5
+// TimeGenerated	Host	Level	Message
+// 2025-04-22 22:31:50.6033390	prod-prod-a-towns-us-east-whfxl-z9zv9	info	NetConnection(5255260002526592121) status changed (status: Disconnected, reason: 'Loading screen took too long')
+// 2025-04-22 22:35:17.1593040	prod-prod-a-towns-us-east-nhk9w-942xk	info	NetConnection(-5133869469244528529) status changed (status: Disconnected, reason: 'Loading screen took too long')
+// 2025-04-22 22:38:37.1840450	prod-prod-a-towns-us-east-whfxl-z9zv9	info	NetConnection(5255260002526592121) status changed (status: Disconnected, reason: 'Loading screen took too long')
+//ConnectionMessagesForClientSession("6f9ad00b619844d79e6ca1003392dabc", 60d)
+//| where Message contains "Disconnected, reason:"
+//| project-reorder TimeGenerated, Message
+
+//ServerLogsBetweenTime("prod-prod-a-towns-us-east-whfxl-z9zv9", datetime(2025-04-22 22:28:47.2229370Z), datetime(2025-04-22 22:31:50.6709800))
+//| where Level has "error"
+//| where Message "LoadCharacter"
+//| where Message contains "A0C111E2A8DF75D5"
+//| invoke CosmosOperations("A0C111E2A8DF75D5")
+
+
+// GameServerLogs
+// | where TimeGenerated > ago(1d)
+// //| where Message contains "ServerNetworkService adding a new connection from"
+// | where Message contains "Disconnected, reason:"
+// | where Message !contains "Client shutting down"
+// | where Message !contains "Kicked for inactivity"
+// | where Message !contains "Closing existing server connection and creating new connection"
+// | parse Message with * "Disconnected, reason: '" Reason: string "'" *
+// | summarize Disconnects = count() by Reason
+// | order by Disconnects desc
+// //| take 1000
+// //| project-reorder TimeGenerated, Message
+// //| summarize count() by 1
+
+// // ─────────────────────────────────────────────────────────────────────────────
+// //  Total established connection count (by players only)
+// // ─────────────────────────────────────────────────────────────────────────────
+// let ConnectCount = toscalar(
+//     GameServerLogs
+//     | where TimeGenerated > ago(1d)
+//     | where Message contains "ServerNetworkService adding a new connection from"
+//     | count            // => single scalar value
+// );
+// 
+// // ─────────────────────────────────────────────────────────────────────────────
+// //  Breakdown of disconnect reasons
+// // ─────────────────────────────────────────────────────────────────────────────
+// let disconnectReasons = GameServerLogs
+// | where TimeGenerated > ago(1d)
+// | where Message contains "Disconnected, reason:"
+// | where Message !contains "Client shutting down"
+// | where Message !contains "Kicked for inactivity"
+// | where Message !contains "Closing existing server connection and creating new connection"
+// | parse Message with * "Disconnected, reason: '" Reason: string "'" *
+// | summarize Disconnects = count() by Reason
+// | extend DisconnectRatePercent = 100.0 * todouble(Disconnects) / todouble(ConnectCount)
+// | order by DisconnectRatePercent desc
+// ;
+// 
+// //disconnectReasons
+// 
+// let _window = 15d;
+// 
+// // ──────────────────────────────────────────────────────────────
+// //  Daily connection totals
+// // ──────────────────────────────────────────────────────────────
+// let ConnectsPerDay = GameServerLogs
+// | where TimeGenerated >= startofday(ago(_window))
+// | where Message has "ServerNetworkService adding a new connection from"
+// | summarize Connects = count()            // total connections that day
+//           by Day = bin(TimeGenerated, 1d);
+// 
+// // ──────────────────────────────────────────────────────────────
+// //  Daily *abnormal* disconnect totals
+// // ──────────────────────────────────────────────────────────────
+// let AbnormalDisconnectsPerDay = GameServerLogs
+// | where TimeGenerated >= startofday(ago(_window))
+// | where Message has "Disconnected, reason:"
+// | where Message !has "Client shutting down"
+//       and Message !has "Kicked for inactivity"
+//       and Message !has "Closing existing server connection and creating new connection"
+// | summarize AbnormalDisconnects = count() // total abnormal disconnects that day
+//           by Day = bin(TimeGenerated, 1d);
+// 
+// // ──────────────────────────────────────────────────────────────
+// //  Combine the two and compute the daily rate
+// // ──────────────────────────────────────────────────────────────
+// ConnectsPerDay
+// | join kind = inner (AbnormalDisconnectsPerDay) on Day
+// | extend DisconnectRatePercent =
+//          100.0 * todouble(AbnormalDisconnects) / todouble(Connects)
+// | project Day,
+//           Connects,
+//           AbnormalDisconnects,
+//           DisconnectRatePercent
+// | order by Day asc
+// | project Day, DisconnectRatePercent
+// | render timechart
+// 
+// 
+
+// ──────────────────────────────────────────────────────────────
+//  Connect/disconnect events
+// ──────────────────────────────────────────────────────────────
+let PlayerConnects = (_from:datetime, _to:datetime)
+{
+    GameServerLogs
+    | where TimeGenerated between (_from .. _to)
+    | where Message has "ServerNetworkService adding a new connection from"
+    | project TimeGenerated
+};
+
+let AbnormalDisconnects = (_from:datetime, _to:datetime)
+{
+    GameServerLogs
+    | where TimeGenerated between (_from .. _to)
+    | where Message has "Disconnected, reason:"
+          and not (Message has "Client shutting down"
+                    or Message has "Kicked for inactivity"
+                    or Message has "Closing existing server connection and creating new connection")
+    | parse Message with * "Disconnected, reason: '" Reason:string "'" *
+    | project TimeGenerated, Reason
+};
+
+// ──────────────────────────────────────────────────────────────
+//  Daily abnormal disconnect rate (from server's perspective)
+// ──────────────────────────────────────────────────────────────
+let DailyAbnormalDisconnectRate = (_window:timespan = 30d)
+{
+    let from = startofday(ago(_window));
+    let end   = now();
+
+    let ConnectsPerDay =
+        PlayerConnects(from, end)
+        | summarize Connects = count() by Day = bin(TimeGenerated, 1d);
+
+    let AbnormalsPerDay =
+        AbnormalDisconnects(from, end)
+        | summarize AbnormalDisconnects = count() by Day = bin(TimeGenerated, 1d);
+
+    ConnectsPerDay
+    | join kind = inner (AbnormalsPerDay) on Day
+    | extend DisconnectRatePercent =
+             100.0 * todouble(AbnormalDisconnects) / todouble(Connects)
+    | project Day,
+//              Connects,
+//              AbnormalDisconnects,
+              DisconnectRatePercent
+    | order by Day asc
+    | render timechart                         // comment out if you only want the table
+};
+
+let DisconnectReasonBreakdown = (_window:timespan = 1d)
+{
+    let from = ago(_window);
+    let end  = now();
+
+    // scalar – one number, no join needed
+    let ConnectCount =
+        toscalar(PlayerConnects(from, end) | count);
+
+    AbnormalDisconnects(from, end)
+    | summarize Disconnects = count() by Reason
+    | extend DisconnectRatePercent =
+         100.0 * todouble(Disconnects) / todouble(ConnectCount)
+    | order by DisconnectRatePercent desc
+};
+
+//DisconnectReasonBreakdown(7d)
+DailyAbnormalDisconnectRate(5d)
