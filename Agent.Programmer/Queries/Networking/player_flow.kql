@@ -168,88 +168,6 @@ let CosmosOperations = (
 //| where Message contains "A0C111E2A8DF75D5"
 //| invoke CosmosOperations("A0C111E2A8DF75D5")
 
-
-// GameServerLogs
-// | where TimeGenerated > ago(1d)
-// //| where Message contains "ServerNetworkService adding a new connection from"
-// | where Message contains "Disconnected, reason:"
-// | where Message !contains "Client shutting down"
-// | where Message !contains "Kicked for inactivity"
-// | where Message !contains "Closing existing server connection and creating new connection"
-// | parse Message with * "Disconnected, reason: '" Reason: string "'" *
-// | summarize Disconnects = count() by Reason
-// | order by Disconnects desc
-// //| take 1000
-// //| project-reorder TimeGenerated, Message
-// //| summarize count() by 1
-
-// // ─────────────────────────────────────────────────────────────────────────────
-// //  Total established connection count (by players only)
-// // ─────────────────────────────────────────────────────────────────────────────
-// let ConnectCount = toscalar(
-//     GameServerLogs
-//     | where TimeGenerated > ago(1d)
-//     | where Message contains "ServerNetworkService adding a new connection from"
-//     | count            // => single scalar value
-// );
-// 
-// // ─────────────────────────────────────────────────────────────────────────────
-// //  Breakdown of disconnect reasons
-// // ─────────────────────────────────────────────────────────────────────────────
-// let disconnectReasons = GameServerLogs
-// | where TimeGenerated > ago(1d)
-// | where Message contains "Disconnected, reason:"
-// | where Message !contains "Client shutting down"
-// | where Message !contains "Kicked for inactivity"
-// | where Message !contains "Closing existing server connection and creating new connection"
-// | parse Message with * "Disconnected, reason: '" Reason: string "'" *
-// | summarize Disconnects = count() by Reason
-// | extend DisconnectRatePercent = 100.0 * todouble(Disconnects) / todouble(ConnectCount)
-// | order by DisconnectRatePercent desc
-// ;
-// 
-// //disconnectReasons
-// 
-// let _window = 15d;
-// 
-// // ──────────────────────────────────────────────────────────────
-// //  Daily connection totals
-// // ──────────────────────────────────────────────────────────────
-// let ConnectsPerDay = GameServerLogs
-// | where TimeGenerated >= startofday(ago(_window))
-// | where Message has "ServerNetworkService adding a new connection from"
-// | summarize Connects = count()            // total connections that day
-//           by Day = bin(TimeGenerated, 1d);
-// 
-// // ──────────────────────────────────────────────────────────────
-// //  Daily *abnormal* disconnect totals
-// // ──────────────────────────────────────────────────────────────
-// let AbnormalDisconnectsPerDay = GameServerLogs
-// | where TimeGenerated >= startofday(ago(_window))
-// | where Message has "Disconnected, reason:"
-// | where Message !has "Client shutting down"
-//       and Message !has "Kicked for inactivity"
-//       and Message !has "Closing existing server connection and creating new connection"
-// | summarize AbnormalDisconnects = count() // total abnormal disconnects that day
-//           by Day = bin(TimeGenerated, 1d);
-// 
-// // ──────────────────────────────────────────────────────────────
-// //  Combine the two and compute the daily rate
-// // ──────────────────────────────────────────────────────────────
-// ConnectsPerDay
-// | join kind = inner (AbnormalDisconnectsPerDay) on Day
-// | extend DisconnectRatePercent =
-//          100.0 * todouble(AbnormalDisconnects) / todouble(Connects)
-// | project Day,
-//           Connects,
-//           AbnormalDisconnects,
-//           DisconnectRatePercent
-// | order by Day asc
-// | project Day, DisconnectRatePercent
-// | render timechart
-// 
-// 
-
 // ──────────────────────────────────────────────────────────────
 //  Connect/disconnect events
 // ──────────────────────────────────────────────────────────────
@@ -273,20 +191,41 @@ let AbnormalDisconnects = (_from:datetime, _to:datetime)
     | project TimeGenerated, Reason
 };
 
+let AbnormalDisconnects2 = (_from:datetime, _to:datetime)
+{
+    GameServerLogs
+    // time window
+    | where TimeGenerated between (_from .. _to)
+
+    // the old style always looks like:
+    //  "SERVER: Found a message of type StatusChanged with contents: Disconnected <reason text>"
+    | where Message has              "Found a message of type"
+      and  Message has              "Disconnected"
+
+    // pull the text that follows the word "Disconnected" – that is the reason
+    | extend Reason = extract(@"Disconnected\s+(.+)$", 1, Message)
+
+    // keep only genuine abnormal cases (same exclusions we use in AbnormalDisconnects)
+    | where not (Reason has "Client shutting down"
+              or Reason has "Kicked for inactivity"
+              or Reason has "Closing existing server connection and creating new connection")
+
+    // columns to return
+    | project TimeGenerated, Reason
+
+};
+
 // ──────────────────────────────────────────────────────────────
 //  Daily abnormal disconnect rate (from server's perspective)
 // ──────────────────────────────────────────────────────────────
-let DailyAbnormalDisconnectRate = (_window:timespan = 30d)
+let DailyAbnormalDisconnectRate = (from:datetime, end:datetime)
 {
-    let from = startofday(ago(_window));
-    let end   = now();
-
     let ConnectsPerDay =
         PlayerConnects(from, end)
         | summarize Connects = count() by Day = bin(TimeGenerated, 1d);
 
     let AbnormalsPerDay =
-        AbnormalDisconnects(from, end)
+        AbnormalDisconnects2(from, end)
         | summarize AbnormalDisconnects = count() by Day = bin(TimeGenerated, 1d);
 
     ConnectsPerDay
@@ -294,23 +233,20 @@ let DailyAbnormalDisconnectRate = (_window:timespan = 30d)
     | extend DisconnectRatePercent =
              100.0 * todouble(AbnormalDisconnects) / todouble(Connects)
     | project Day,
-//              Connects,
-//              AbnormalDisconnects,
+              //Connects,
+              //AbnormalDisconnects,
               DisconnectRatePercent
     | order by Day asc
     | render timechart                         // comment out if you only want the table
 };
 
-let DisconnectReasonBreakdown = (_window:timespan = 1d)
+let DisconnectReasonBreakdown = (from:datetime, end:datetime)
 {
-    let from = ago(_window);
-    let end  = now();
-
     // scalar – one number, no join needed
     let ConnectCount =
         toscalar(PlayerConnects(from, end) | count);
 
-    AbnormalDisconnects(from, end)
+    AbnormalDisconnects2(from, end)
     | summarize Disconnects = count() by Reason
     | extend DisconnectRatePercent =
          100.0 * todouble(Disconnects) / todouble(ConnectCount)
@@ -318,4 +254,12 @@ let DisconnectReasonBreakdown = (_window:timespan = 1d)
 };
 
 //DisconnectReasonBreakdown(7d)
-DailyAbnormalDisconnectRate(5d)
+let start = ago(360d);
+//DailyAbnormalDisconnectRate(start, start+3d)
+DisconnectReasonBreakdown(start, start+3d);
+
+//AbnormalDisconnects2(start, start+10m)
+//| take 100
+// GameServerLogs
+// | where TimeGenerated between (start .. start+1d)
+//| summarize count() by bin(TimeGenerated, 1d)
