@@ -1,7 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Parameters – adjust as needed
 // ─────────────────────────────────────────────────────────────────────────────
-let startTime      = ago(10d);
+let InTimeRange = (ts:datetime)
+{
+    ts between (ago(10d) .. now())
+    // $__timeFilter(ts) // for Grafana
+};
 let targetFrameMs  = 50.0;          // "hitch" threshold in milliseconds
 let hitchBin       = 50.0;           // histogram bucket width (hitches per hour)
 let minSessionTime = 1.0;           // ignore <1 s sessions
@@ -37,7 +41,7 @@ let NormalizeGpu = (model:string, vramMaxGB:int)
 // Base event pull
 // ─────────────────────────────────────────────────────────────────────────────
 let baseEventQuery = playfabevents
-| where Timestamp > startTime
+| where InTimeRange(Timestamp)
 | where FullName_Name has "lastepoch_session_performance_metrics" 
     or (FullName_Name has "lastepoch_client_log" and EventData contains "frameTimeMetrics")// backwards compat with old event format
 | extend JsonDetails = tostring(coalesce(EventData.json_details, EventData.jsonDetails)) // backwards compat with old event format
@@ -49,14 +53,18 @@ let baseEventQuery = playfabevents
 // Frame-time metrics – one row per performance event
 // ─────────────────────────────────────────────────────────────────────────────
 let frameMetricsQuery = baseEventQuery
-| where TimeGenerated > startTime
+| where InTimeRange(TimeGenerated)
 //| project TimeGenerated, PlayerClientSessionId, JsonDetails
 | sort by TimeGenerated asc
 | extend MetricsId  = strcat(TimeGenerated, "_", PlayerClientSessionId)
 | extend d          = parse_json(JsonDetails)
 | extend MetricsTime = todouble(d.elapsedTimeSeconds)        // session time at this packet
+| extend OS = tostring(d.processMetrics.systemInfo.os)
 | extend GPU = tostring(d.processMetrics.systemInfo.gpu)
 | extend VramMaxGB = toint(round( todouble(d.processMetrics.systemInfo.maxVramMemory) / 1024.0 ))
+// filter for platform (temp)
+//| where GPU contains "VANG" // for steamdeck
+//| where GPU contains "native gfx jobs" // for ps5
 
 // | where  (MetricsTime >  minSessionTime)
 //    and  (maxSessionTime == 0.0 or MetricsTime < maxSessionTime)
@@ -82,21 +90,22 @@ let hitchesPerEvent = frameTimeBuckets
       SessionTimeSecs = max(MetricsTime)          // same for all rows in packet
       by MetricsId, TimeGenerated, PlayerClientSessionId
 | where SessionTimeSecs > 0
-| extend HitchesPerHour = FramesAbove / (SessionTimeSecs / 3600.0);
+| extend HitchesPerHour = FramesAbove / (SessionTimeSecs / 3600.0)
+;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Optional – profile & account look-ups
 // ─────────────────────────────────────────────────────────────────────────────
 let clientSessionIdToProfile =
     GameServerLogs
-    | where TimeGenerated > startTime
+    | where InTimeRange(TimeGenerated)
     | summarize arg_max(TimeGenerated, Profile) by PlayerClientSessionId
     | where Profile !contains "-towns"
     | project PlayerClientSessionId, Profile;
 
 let clientSessionIdToAccountName =
     GameServerLogs
-    | where TimeGenerated > startTime
+    | where InTimeRange(TimeGenerated)
     | where Message has "joined" and Message startswith "Player"
     | extend AccountName = extract(@"Player\s+'?([^']+?)'?\s+joined", 1, Message)
     | where isnotempty(AccountName)
@@ -105,7 +114,7 @@ let clientSessionIdToAccountName =
 
 let clientSessionIdToUnity6 =
     GameServerLogs
-    | where TimeGenerated > startTime
+    | where InTimeRange(TimeGenerated)
     | where Profile !contains "-towns"
     | where PlayerClientSessionId !contains "HTTP" // for whatever reason, this can be an HTTP error
     | where isnotempty(PlayerClientSessionId)
@@ -165,89 +174,141 @@ let dailyHitchRate =
 ;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// (CUSTOM FOR UNITY6) Daily trend – hourly hitch-rate per profile
-// ─────────────────────────────────────────────────────────────────────────────
-let targetSessions = clientSessionIdToUnity6
-| distinct PlayerClientSessionId
-;
-let dailyHitchRateUnity6 =
-    hitchesPerEvent
-    | join kind=inner (clientSessionIdToUnity6) on PlayerClientSessionId
-    | summarize
-          Sessions         = count(),
-          P50_HitchRate   = avg(HitchesPerHour),
-          Median_HitchRate = percentile(HitchesPerHour, 50),
-          P99_HitchRate    = percentile(HitchesPerHour, 99)
-          by Day = bin(TimeGenerated, 1d)
-    | where Sessions >= minBucketSampleCount
-    | project Day, P50_HitchRate, P99_HitchRate
-    | render timechart
-          with (title  = strcat("Daily Hitch Rate – Unity 6000.*, >", tostring(targetFrameMs), " ms"),
-                 ytitle = "Hitches per Hour")
-;
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Avg-frame-time per *packet*  →  P50 / P99 across packets
 // ─────────────────────────────────────────────────────────────────────────────
-let packetFrameTimes =
-    frameMetricsQuery
-    | mv-expand d.frameTimeMetrics.buckets
-    | extend b = parse_json(d_frameTimeMetrics_buckets)
-    | extend
-        BucketN   = todouble(b.n),
-        BucketAvg = todouble(b.avg)
-    | where BucketN > 0 and isfinite(BucketAvg)
+let packetsWithStats = frameMetricsQuery
+| mv-expand d.frameTimeMetrics.buckets
+| extend b = parse_json(d_frameTimeMetrics_buckets)
+| extend
+    BucketN   = todouble(b.n),
+    BucketAvg = todouble(b.avg)
+| where BucketN > 0 and isfinite(BucketAvg)
 
-    // weighted mean for this packet (MetricsId)
-    | extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
-    | join kind=leftouter (GpuScores) on $left.NormalizedGpu == $right.Model
+// weighted mean for this packet (MetricsId)
+| extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
+| join kind=leftouter (GpuScores) on $left.NormalizedGpu == $right.Model
+| summarize
+    PacketFrameCount = sum(BucketN),
+    PacketTotalMs     = sum(BucketN * BucketAvg)
+  by MetricsId, TimeGenerated, NormalizedGpu, Score, OS
+| where PacketFrameCount > 0
+| extend AvgFrameMs = PacketTotalMs / PacketFrameCount
+;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hitches-per-hour % over flat threshold
+// ─────────────────────────────────────────────────────────────────────────────
+let hitchRateThreshold = 200.0;
+
+let packetsOverThreshold =
+    hitchesPerEvent
     | summarize
-        Frames_thisPkt = sum(BucketN),
-        Ms_thisPkt     = sum(BucketN * BucketAvg)
-      by MetricsId, TimeGenerated, NormalizedGpu, Score
-    | where Frames_thisPkt > 0
-    | extend AvgFrameMs = Ms_thisPkt / Frames_thisPkt        // ← packet-level mean
+        PacketsTotal = count(),
+        PacketsOver  = countif(HitchesPerHour > hitchRateThreshold)
+    | extend PercentOver = todouble(PacketsOver) / PacketsTotal * 100.0
+    | project PacketsTotal, PacketsOver, PercentOver
 ;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Percentiles across packets
 // ─────────────────────────────────────────────────────────────────────────────
-let frameTimePercentiles = packetFrameTimes
+let packetFrameTimePercentiles = packetsWithStats
 | summarize
-      //Packets       = count(),
-      P50_FrameMs   = percentile(AvgFrameMs, 50),
-      P90_FrameMs   = percentile(AvgFrameMs, 90),
-      P99_FrameMs   = percentile(AvgFrameMs, 99),
-      P99_9_FrameMs   = percentile(AvgFrameMs, 99.9) 
+      Samples       = count(),
+      P50_FPS = 1000.0 / percentile(AvgFrameMs, 50),
+      P90_FPS = 1000.0 / percentile(AvgFrameMs, 90),
+      P99_FPS = 1000.0 / percentile(AvgFrameMs, 99),
+      P99_9_FPS = 1000.0 / percentile(AvgFrameMs, 99.9) 
       by bin(Score, 5000)
+| sort by Score asc      
+;
+
+let packetFrameTimeChart = packetFrameTimePercentiles
+| project-away Samples
+| extend Target_60_FPS = 60.0 // the red line
 | render linechart
       with (
-          title  = "Frame-time percentiles vs. GPU benchmark score",
-          xtitle = "GPU score (lower bound of 5 000-wide bin)",
-          ytitle = "Frame time (ms)"
+          title   = "FPS percentiles vs. GPU score",
+          xtitle  = "GPU score (lower bound of 5000-wide bin)",
+          ytitle  = "Frames per second (FPS)"
       )
 ;
 
-//frameTimePercentiles
+let packetSamplesChart = packetFrameTimePercentiles
+| sort by Score asc
+| extend ScoreDim = tostring(Score)
+| project ScoreDim, Samples
+| render columnchart
+    with (
+        title  = "Sample count vs. GPU score",
+        xtitle = "GPU score (lower bound of 5 000-wide bin)",
+        ytitle = "Sample count"     // y-axis is now the count
+    )
+;
+
+//packetFrameTimeChart
+//packetSamplesChart
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hitches-per-hour percentiles vs. GPU benchmark
+// ─────────────────────────────────────────────────────────────────────────────
+let packetsWithHitchRate =
+    hitchesPerEvent
+    // attach GPU model / VRAM so we can score it
+     | join kind = inner
+         (frameMetricsQuery
+          | project MetricsId, PlayerClientSessionId, GPU, VramMaxGB)
+         on MetricsId
+     //  normalise the GPU name and look-up its synthetic benchmark score
+     | extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
+     | join kind = leftouter (GpuScores) on $left.NormalizedGpu == $right.Model
+     | where isnotempty(Score)                          // drop un-scored GPUs
+     | project MetricsId, HitchesPerHour, Score
+;
+
+// roll-up to percentile statistics per 5 000-wide GPU-score bin
+let hitchRatePercentiles =
+    packetsWithHitchRate
+    | summarize
+          Samples          = count(),
+          P50_HitchesPerHr = percentile(HitchesPerHour, 50),
+          P75_HitchesPerHr = percentile(HitchesPerHour, 75),
+          P90_HitchesPerHr = percentile(HitchesPerHour, 90),
+          P99_HitchesPerHr = percentile(HitchesPerHour, 99)
+        by bin(Score, 5000)
+;
+
+// primary visual – multi-series line chart
+let hitchRateChart =
+    hitchRatePercentiles
+    | project-away Samples
+    | render linechart
+        with (
+            title  = strcat("Hitches per Hour vs. GPU score  (>", tostring(targetFrameMs), " ms)"),
+            xtitle = "GPU score (lower bound of 5 000-wide bin)",
+            ytitle = "Hitches per Hour"
+        )
+;
+
+packetFrameTimeChart
+//packetsWithHitchRate
+//hitchRatePercentiles
+//hitchRateChart
+
+
+//packetsOverThreshold
+
 //hitchHistogram
 //dailyHitchRate
 //serverUnity6Sessions
 //dailyHitchRateUnity6
 
-dailyHitchRate
+//dailyHitchRate
 
-// frameMetricsQuery
-// | project GPU, VramMaxGB
-// | where GPU contains "VANG"
-// | summarize count() by GPU
-//| extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
-//| join kind=leftouter (GpuScores) on $left.NormalizedGpu == $right.Model
-// | where isempty(Score)
-// //| count
-// | summarize count() by 1 //NormalizedGpu, VramMaxGB
- 
-
-// GpuScores
+//GpuScores
+//| where Model contains "3060"
+//| sort by Score desc
+// | where Model contains "GeForce"
 // | where Model contains "6800"
 // | extend Model = 
 // 

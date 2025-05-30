@@ -225,7 +225,7 @@ let DailyAbnormalDisconnectRate = (from:datetime, end:datetime)
         | summarize Connects = count() by Day = bin(TimeGenerated, 1d);
 
     let AbnormalsPerDay =
-        AbnormalDisconnects2(from, end)
+        AbnormalDisconnects(from, end)
         | summarize AbnormalDisconnects = count() by Day = bin(TimeGenerated, 1d);
 
     ConnectsPerDay

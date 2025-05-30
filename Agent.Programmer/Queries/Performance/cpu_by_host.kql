@@ -1,5 +1,5 @@
 let minSampleCount   = 1;
-let startTime        = ago(14d);
+let startTime        = ago(30d);
 let targetPlayerCount = 1;
 let minSessionTime = 60;
 let maxSessionTime = 1000.0; // 0 to disable
@@ -9,7 +9,7 @@ let processMetricsQuery =
 GameServerLogs
 | where TimeGenerated > startTime
 | where JsonDetails has "processMetrics"
-| project TimeGenerated, Host, JsonDetails, Location, Profile
+| project TimeGenerated, Host, JsonDetails, Location, Profile, UnityVersion
 | sort by TimeGenerated asc
 | extend MetricsId   = strcat(TimeGenerated, "_", Host)
 | extend d           = parse_json(JsonDetails)
@@ -25,7 +25,7 @@ processMetricsQuery
 | extend BucketN    = todouble(b.n)
 | extend BucketAvg  = todouble(b.avg)
 | project TimeGenerated, MetricsId, BucketMin, BucketN, BucketAvg,
-          Host, MetricsTime, Profile;
+          Host, MetricsTime, Profile, UnityVersion;
 
 // Roll-up cpu histogram buckets per session
 let avgCpuPerSession =
@@ -34,11 +34,11 @@ processQueryCpu
       TotalSamples    = sum(BucketN),
       WeightedCpuSum  = sum(BucketAvg * BucketN),
       SessionTimeSecs = max(MetricsTime)
-    by MetricsId, Host, TimeGenerated, Profile
+    by MetricsId, Host, TimeGenerated, Profile, UnityVersion
 | extend AverageCpuPct = WeightedCpuSum / TotalSamples
 | project TimeGenerated, MetricsId, AverageCpuPct,
           TotalSamples, SessionTimeSecs, Host, Profile,
-          WeightedCpuSum;
+          WeightedCpuSum, UnityVersion;
 
 // Roll-up sessions by profile
 let avgCpuByProfile =
@@ -46,7 +46,7 @@ avgCpuPerSession
 | summarize
       ProfileWeightedCpuSum = sum(WeightedCpuSum),
       ProfileTotalSamples   = sum(TotalSamples)
-    by Profile
+    by Profile, UnityVersion
 | extend AverageCpuPct = ProfileWeightedCpuSum / ProfileTotalSamples
 | project Profile, AverageCpuPct, ProfileTotalSamples
 | sort by AverageCpuPct desc;
@@ -58,10 +58,18 @@ avgCpuPerSession
 // | order by Profile asc
 // | render columnchart
  
-// Custom: unity 6 cpu vs elapsed session time
+// // Custom: unity 6 cpu vs elapsed session time
+// avgCpuPerSession
+// | where Profile in ("dev1", "nightlyrelease", "nightlymain")
+// | project SessionTimeSecs, AverageCpuPct, Profile
+// | summarize AvgCpuPct = avg(AverageCpuPct)    // mean of all sessions in the bin
+//           by ElapsedBucket = bin(SessionTimeSecs, 60), Profile
+// | render linechart 
+
 avgCpuPerSession
-| where Profile in ("dev1", "nightlyrelease", "nightlymain")
-| project SessionTimeSecs, AverageCpuPct, Profile
-| summarize AvgCpuPct = avg(AverageCpuPct)    // mean of all sessions in the bin
-          by ElapsedBucket = bin(SessionTimeSecs, 60), Profile
-| render linechart 
+// GameServerLogs
+//| extend IsTargetSet = (Profile has "qa-13") and (UnityVersion has "6000.0.42f1")
+| where (Profile has "qa-13")
+//| where IsTargetSet == true
+| where TimeGenerated > ago(30d)
+ | summarize count(), avg(AverageCpuPct) by UnityVersion//, bin(TimeGenerated, 1d)
