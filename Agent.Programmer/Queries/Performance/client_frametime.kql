@@ -3,8 +3,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 let InTimeRange = (ts:datetime)
 {
-    ts between (ago(10d) .. now())
+    ts between (ago(1d) .. now())
     // $__timeFilter(ts) // for Grafana
+};
+let targetPlatform = "";
+let IsMatchingPlatform = (platform:string)
+{
+    isempty(targetPlatform) or platform has targetPlatform
+    //isempty("$platform") or platform has $platform // for Grafana
 };
 let targetFrameMs  = 50.0;          // "hitch" threshold in milliseconds
 let hitchBin       = 50.0;           // histogram bucket width (hitches per hour)
@@ -34,6 +40,20 @@ let NormalizeGpu = (model:string, vramMaxGB:int)
         candidate == "Custom GPU 0405 (RADV VANGOGH)", "Custom GPU 0405",
         candidate == "Custom GPU 0932 (RADV VANGOGH)", "Custom GPU 0932",
         candidate
+    )
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Function to derive the player-platform from OS & NormalizedGpu
+// ─────────────────────────────────────────────────────────────────────────────
+let DetectPlatform = (os:string, normalizedGpu:string)
+{
+    // IMPORTANT — do the GPU checks first, then fall back to OS
+    case(
+        normalizedGpu contains_cs "VANG",              "SteamDeck",   // Steam Deck (Van Gogh APU)
+        normalizedGpu contains_cs "native gfx jobs",   "PS5",         // PlayStation 5
+        os has "windows",                               "Windows",    // any flavour of Windows
+        "Unknown"                                                     // everything else
     )
 };
 
@@ -186,11 +206,15 @@ let packetsWithStats = frameMetricsQuery
 
 // weighted mean for this packet (MetricsId)
 | extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
+| extend Platform = DetectPlatform(OS, NormalizedGpu)
+| where IsMatchingPlatform(Platform)
 | join kind=leftouter (GpuScores) on $left.NormalizedGpu == $right.Model
 | summarize
     PacketFrameCount = sum(BucketN),
     PacketTotalMs     = sum(BucketN * BucketAvg)
-  by MetricsId, TimeGenerated, NormalizedGpu, Score, OS
+  by MetricsId, TimeGenerated, NormalizedGpu, Score, OS, Platform
+| extend Score = iff(Platform == "PS5" and isempty(Score), 20000, Score) // Give PS5 a flat 20K
+| extend Score = iff(Platform == "SteamDeck" and isempty(Score), 3000, Score) // Most SteamDeck entries have a GPU score, but if not give it a low-tier bucket value
 | where PacketFrameCount > 0
 | extend AvgFrameMs = PacketTotalMs / PacketFrameCount
 ;
@@ -257,11 +281,15 @@ let packetsWithHitchRate =
     // attach GPU model / VRAM so we can score it
      | join kind = inner
          (frameMetricsQuery
-          | project MetricsId, PlayerClientSessionId, GPU, VramMaxGB)
+          | project MetricsId, PlayerClientSessionId, GPU, VramMaxGB, OS)
          on MetricsId
      //  normalise the GPU name and look-up its synthetic benchmark score
      | extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
-     | join kind = leftouter (GpuScores) on $left.NormalizedGpu == $right.Model
+     | extend Platform = DetectPlatform(OS, NormalizedGpu)
+     | where IsMatchingPlatform(Platform)
+     | join kind = leftouter (GpuScores) on $left.NormalizedGpu == $right.Model 
+     | extend Score = iff(Platform == "PS5" and isempty(Score), 20000, Score) // Give PS5 a flat 20K
+     | extend Score = iff(Platform == "SteamDeck" and isempty(Score), 3000, Score) // Most SteamDeck entries have a GPU score, but if not give it a low-tier bucket value
      | where isnotempty(Score)                          // drop un-scored GPUs
      | project MetricsId, HitchesPerHour, Score
 ;
@@ -273,9 +301,10 @@ let hitchRatePercentiles =
           Samples          = count(),
           P50_HitchesPerHr = percentile(HitchesPerHour, 50),
           P75_HitchesPerHr = percentile(HitchesPerHour, 75),
-          P90_HitchesPerHr = percentile(HitchesPerHour, 90),
-          P99_HitchesPerHr = percentile(HitchesPerHour, 99)
+          P90_HitchesPerHr = percentile(HitchesPerHour, 90)
+          //P99_HitchesPerHr = percentile(HitchesPerHour, 99)
         by bin(Score, 5000)
+    | sort by Score asc
 ;
 
 // primary visual – multi-series line chart
@@ -290,10 +319,12 @@ let hitchRateChart =
         )
 ;
 
-packetFrameTimeChart
+//packetFrameTimeChart
 //packetsWithHitchRate
+//packetSamplesChart
 //hitchRatePercentiles
 //hitchRateChart
+//print IsMatchingPlatform("Windows")
 
 
 //packetsOverThreshold
@@ -312,3 +343,32 @@ packetFrameTimeChart
 // | where Model contains "6800"
 // | extend Model = 
 // 
+
+//packetsWithStats
+//baseEventQuery
+
+playfabevents
+| where Timestamp > ago(7d)
+| summarize min(Timestamp), max(Timestamp), count() by bin(Timestamp, 30m)
+| sort by Timestamp desc
+| project Timestamp, count_
+| extend TimeAgo = now() - Timestamp
+| render timechart 
+
+//['events.all']
+// playfabevents
+// | order by Timestamp
+// | limit 1
+
+// playfabevents
+// | where Timestamp > ago(1d)
+// | summarize min(Timestamp), max(Timestamp), count()
+// 
+//| where InTimeRange(Timestamp)
+// | where FullName_Name has "lastepoch_session_performance_metrics" 
+//     or (FullName_Name has "lastepoch_client_log" and EventData contains "frameTimeMetrics")// backwards compat with old event format
+// | extend JsonDetails = tostring(coalesce(EventData.json_details, EventData.jsonDetails)) // backwards compat with old event format
+// | extend TimeGenerated         = Timestamp
+// | extend PlayerClientSessionId = tostring(EventData.session)
+// | extend Scene                 = tostring(parse_json(JsonDetails).scene)
+// | summarize count() by 1
