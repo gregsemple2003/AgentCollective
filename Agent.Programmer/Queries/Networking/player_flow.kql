@@ -246,7 +246,7 @@ let DisconnectReasonBreakdown = (from:datetime, end:datetime)
     let ConnectCount =
         toscalar(PlayerConnects(from, end) | count);
 
-    AbnormalDisconnects2(from, end)
+    AbnormalDisconnects(from, end)
     | summarize Disconnects = count() by Reason
     | extend DisconnectRatePercent =
          100.0 * todouble(Disconnects) / todouble(ConnectCount)
@@ -254,12 +254,45 @@ let DisconnectReasonBreakdown = (from:datetime, end:datetime)
 };
 
 //DisconnectReasonBreakdown(7d)
-let start = ago(360d);
+//let start = ago(10d);
 //DailyAbnormalDisconnectRate(start, start+3d)
-DisconnectReasonBreakdown(start, start+3d);
+//DisconnectReasonBreakdown(start, start+3d);
 
 //AbnormalDisconnects2(start, start+10m)
 //| take 100
 // GameServerLogs
 // | where TimeGenerated between (start .. start+1d)
 //| summarize count() by bin(TimeGenerated, 1d)
+ 
+// //https://app.clickup.com/t/42097836/QA-536408 b3ed12ead448494cb3d60caba50417fc then 38581fb135824f9cb7da4d212baa0c6e
+// ConnectionMessagesForClientSession("b3ed12ead448494cb3d60caba50417fc", 7d)
+// | extend TimeAgo = now() - TimeGenerated
+// | project-reorder TimeGenerated, TimeAgo
+// | where Message contains "Disconnected, reason:"
+// //| where Message contains "Player connected"
+// //| project-reorder TimeGenerated, Message
+
+// //Checking whether town server has "no reesponse" disconnects for other players; it doesn't, just the one player
+// GameServerLogs
+// | where TimeGenerated > ago(7d)
+// //| where Host has "prod-prod-a-towns-us-west-2prvf-bqbkb"
+// | where Host has "prod-prod-a-towns-asia-east-7zksv-5pp7k"
+// | project-reorder TimeGenerated, Message, StackTrace
+// | where Message contains "Disconnected, reason:"// or Message contains_cs "Connected"
+// | where Message contains "remote host"
+// //| summarize count() by bin(TimeGenerated, 30m)
+
+// https://app.clickup.com/t/42097836/QA-536332 d9f93a06f26e47dfb30856dfaf1f89e2
+//ConnectionMessagesForClientSession("d9f93a06f26e47dfb30856dfaf1f89e2", 7d)
+//| where Message contains "Disconnected, reason:"
+
+//https://app.clickup.com/t/42097836/QA-536312 e077709d46f342a2a97bf70eb87365af
+//ConnectionMessagesForClientSession("e077709d46f342a2a97bf70eb87365af", 7d)
+//| where Message contains "Disconnected, reason:"
+
+// 31CFBB25AC312CE9
+GameServerLogs
+| where TimeGenerated > ago(7d)
+| where Message contains "31CFBB25AC312CE9"
+| project-reorder TimeGenerated, Message, StackTrace
+| sort by TimeGenerated asc
