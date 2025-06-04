@@ -290,9 +290,19 @@ let DisconnectReasonBreakdown = (from:datetime, end:datetime)
 //ConnectionMessagesForClientSession("e077709d46f342a2a97bf70eb87365af", 7d)
 //| where Message contains "Disconnected, reason:"
 
-// 31CFBB25AC312CE9
+// // 31CFBB25AC312CE9
+// GameServerLogs
+// | where TimeGenerated > ago(7d)
+// | where Message contains "31CFBB25AC312CE9"
+// | project-reorder TimeGenerated, Message, StackTrace
+// | sort by TimeGenerated asc
+
 GameServerLogs
-| where TimeGenerated > ago(7d)
-| where Message contains "31CFBB25AC312CE9"
-| project-reorder TimeGenerated, Message, StackTrace
-| sort by TimeGenerated asc
+| where TimeGenerated > ago(2d)
+// | where Message contains "Received signal: '15'."
+// | summarize count() by bin(TimeGenerated, 15m), Region
+// | sort by TimeGenerated asc
+// | render timechart
+| where Host has "prod-prod-a-eu-west-pcxgr-xx7tv"
+| project-reorder TimeGenerated, Message, PlayerCount
+| sort by TimeGenerated desc

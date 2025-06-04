@@ -22,7 +22,9 @@ let targetProfiles = dynamic(["nightlyrelease"]);
 // ─────────────────────────────────────────────────────────────────────────────
 // Function to sanitize the GPU name we get so that it matches our benchmark data
 // ─────────────────────────────────────────────────────────────────────────────
-let NormalizeGpu = (model:string, vramMaxGB:int)
+.create-or-alter function
+with (folder = 'KPI')
+NormalizeGpu = (model:string, vramMaxGB:int)
 {
     // Brand prefix removal (case-insensitive)
     let base = trim(" ", replace_regex(model, @"(?i)^(NVIDIA\s+|AMD\s+)", ""));
@@ -354,7 +356,7 @@ let ExtendSlice = (
 };
 
 
-let SceneFPS =
+let frameTimeBySlice =
     packetsWithStats
     | invoke ExtendSlice(SliceParam)
     | summarize
@@ -365,15 +367,7 @@ let SceneFPS =
         by Slice
     | where isfinite(P50_FPS);          // keep only valid rows
 
-// ─── un-pivot into long form ───────────────────────────────────────────
-let HeatmapSrc =
-    (SceneFPS | project Slice, Percentile = "P50", FPS = P50_FPS)
-    | union (SceneFPS | project Slice, Percentile = "P90", FPS = P90_FPS)
-    | union (SceneFPS | project Slice, Percentile = "P99", FPS = P99_FPS);
-
-//HeatmapSrc
-//| order by FPS asc      // handy when inspecting the raw result
-SceneFPS
+frameTimeBySlice
 
 //packetFrameTimeChart
 //packetsWithHitchRate
@@ -402,3 +396,10 @@ SceneFPS
 // | extend TimeAgo = now() - Timestamp
 // | project TimeAgo, count_
 // | render timechart
+
+// TODO gsemple: extract class/mastery/level/ability
+// GameServerLogs
+// | where TimeGenerated > ago(3d)
+// | where Message contains "mastery" and Message contains "sessionDuration"
+// | project-reorder TimeGenerated, Message, JsonDetails
+// | sort by TimeGenerated asc
