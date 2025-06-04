@@ -1,0 +1,35 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Function to sanitize the GPU name we get so that it matches our benchmark data
+// ─────────────────────────────────────────────────────────────────────────────
+.create-or-alter function with (folder = 'KPI') NormalizeGpu(model:string, vramMaxGB:int) {
+    // Brand prefix removal (case-insensitive)
+    let base = trim(" ", replace_regex(model, @"(?i)^(NVIDIA\s+|AMD\s+)", ""));
+
+    // VRAM suffix for selected models
+    let needsVram = base in ("GeForce RTX 3060", "GeForce RTX 3050", "GeForce GTX 1060");
+    let candidate = iif(needsVram,
+        strcat(base, " ", tostring(vramMaxGB), "GB"),
+        base);
+
+    // Redirects (add more cases as needed)
+    case(
+        candidate == "GeForce GTX 1060 6GB", "GeForce GTX 1060 5GB",
+        candidate == "GeForce RTX 3050 Laptop GPU", "GeForce RTX 3050 4GB Laptop GPU",
+        candidate == "Custom GPU 0405 (RADV VANGOGH)", "Custom GPU 0405",
+        candidate == "Custom GPU 0932 (RADV VANGOGH)", "Custom GPU 0932",
+        candidate
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Function to derive the player-platform from OS & NormalizedGpu
+// ─────────────────────────────────────────────────────────────────────────────
+.create-or-alter function with (folder = 'KPI') DetectPlatform(os:string, normalizedGpu:string) {
+    // IMPORTANT — do the GPU checks first, then fall back to OS
+    case(
+        normalizedGpu contains_cs "VANG",              "SteamDeck",   // Steam Deck (Van Gogh APU)
+        normalizedGpu contains_cs "native gfx jobs",   "PS5",         // PlayStation 5
+        os has "windows",                               "Windows",    // any flavour of Windows
+        "Unknown"                                                     // everything else
+    )
+}
