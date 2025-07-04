@@ -350,7 +350,7 @@ let frameTimeBySlice =
 //packetFrameTimeChart
 //packetsWithHitchRate
 //packetSamplesChart
-//hitchRatePercentiles
+hitchRatePercentiles
 //hitchRateChart
 //print IsMatchingPlatform("Windows")
 
