@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 let InTimeRange = (ts:datetime)
 {
-    ts between (ago(10d) .. now())
+    ts between (ago(1d) .. now())
     // $__timeFilter(ts) // for Grafana
 };
 let targetPlatform = "";
@@ -81,18 +81,6 @@ let frameTimeBuckets = frameMetricsQuery
           BucketMin, BucketN, MetricsTime;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Roll-up frame time metrics per event (count frames > Xms)
-// ─────────────────────────────────────────────────────────────────────────────
-let hitchesPerEvent = frameTimeBuckets
-| summarize
-      FramesAbove     = sumif(BucketN, BucketMin >= targetFrameMs),
-      SessionTimeSecs = max(MetricsTime)          // same for all rows in packet
-      by MetricsId, TimeGenerated, PlayerClientSessionId
-| where SessionTimeSecs > 0
-| extend HitchesPerHour = FramesAbove / (SessionTimeSecs / 3600.0)
-;
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Optional – profile & account look-ups
 // ─────────────────────────────────────────────────────────────────────────────
 let clientSessionIdToProfile =
@@ -126,92 +114,36 @@ let clientSessionIdToUnity6 =
 ;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Histogram – *overall* hitches per hour
-// ─────────────────────────────────────────────────────────────────────────────
-let hitchHistogram = hitchesPerEvent
-| join kind = inner (clientSessionIdToProfile) on PlayerClientSessionId
-| where Profile in (targetProfiles)
-| summarize Sessions = count() by Bin = bin(HitchesPerHour, hitchBin)
-| where Sessions > minBucketSampleCount
-| order by Bin asc
-| extend BinLabel = strcat(tostring(Bin), "-", tostring(Bin + hitchBin))
-| project BinLabel, Sessions
-| render columnchart
-    with (
-        title  = strcat("Hitches per Hour Histogram (>", tostring(targetFrameMs), " ms)"),
-        xtitle = strcat("Hitches per Hour (", tostring(hitchBin), "-wide bins)"),
-        ytitle = "Number of Sessions"
-    )
-;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Daily trend – hourly hitch-rate per profile
-// ─────────────────────────────────────────────────────────────────────────────
-let dailyHitchRate =
-    hitchesPerEvent
-    // tie each packet to its profile
-    | join kind = inner (clientSessionIdToProfile) on PlayerClientSessionId
-    | where Profile in (targetProfiles)
-    // roll-up by calendar day (bin(...,1d)) – one row per day per profile
-    | summarize
-        Sessions           = count(),                     // how many packets in bucket
-        Mean_HitchRate     = avg(HitchesPerHour),
-        P50_HitchRate   = percentile(HitchesPerHour, 50),
-        P75_HitchRate      = percentile(HitchesPerHour, 75),
-        P95_HitchRate      = percentile(HitchesPerHour, 95),
-        P99_HitchRate      = percentile(HitchesPerHour, 99)
-        by Day = bin(TimeGenerated, 1d), Profile
-    // optionally drop days with very few samples
-    | where Sessions >= minBucketSampleCount
-    | project Day, Profile, P50_HitchRate, P75_HitchRate, P95_HitchRate, P99_HitchRate
-    | render timechart
-          with (
-              title  = strcat("Daily Hitch Rate – Percentiles  (>", tostring(targetFrameMs), " ms)"),
-              ytitle = "Hitches per Hour",
-              series = Profile
-          )
-;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Avg-frame-time per *packet*  →  P50 / P99 across packets
+// Session metrics event statistics (one per row): FPS, hitch.
 // ─────────────────────────────────────────────────────────────────────────────
 let packetsWithStats = frameMetricsQuery
 | mv-expand d.frameTimeMetrics.buckets
 | extend b = parse_json(d_frameTimeMetrics_buckets)
 | extend
     BucketN   = todouble(b.n),
-    BucketAvg = todouble(b.avg)
+    BucketAvg = todouble(b.avg),
+    BucketMin = todouble(b.min)
 | where BucketN > 0 and isfinite(BucketAvg)
-// weighted mean for this packet (MetricsId)
+// Add platform and gpu information
 | extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
 | extend Platform = DetectPlatform(OS, NormalizedGpu)
 | where IsMatchingPlatform(Platform)
 | join kind=leftouter (GpuScores) on $left.NormalizedGpu == $right.Model
+// Roll-up buckets, summarize hitch and FPS stats
 | summarize
-    PacketFrameCount = sum(BucketN),
-    PacketTotalMs = sum(BucketN * BucketAvg),
-    VramMaxGB = any(VramMaxGB),
-    MaxForegroundFPS = any(MaxForegroundFPS),
-    MasterQuality = any(MasterQuality)
-  by MetricsId, TimeGenerated, NormalizedGpu, Score, OS, Platform, Scene
+    PacketFrameCount  = sum(BucketN),
+    PacketTotalMs     = sum(BucketN * BucketAvg),
+    AvgFrameMs        = sum(BucketN * BucketAvg) / sum(BucketN),
+    HitchesPerHour   = sumif(BucketN, BucketMin >= targetFrameMs) / (max(MetricsTime) / 3600.0),
+    VramMaxGB         = any(VramMaxGB),
+    MaxForegroundFPS  = any(MaxForegroundFPS),
+    Score             = any(Score),
+    MasterQuality     = any(MasterQuality)
+  by MetricsId, TimeGenerated, NormalizedGpu, OS, Platform, Scene
+// Fill-in synthetic gpu scores for platforms that aren't directly
 | extend Score = iff(Platform == "PS5" and isempty(Score), 20000, Score) // Give PS5 a flat 20K
 | extend Score = iff(Platform == "SteamDeck" and isempty(Score), 3000, Score) // Most SteamDeck entries have a GPU score, but if not give it a low-tier bucket value
 | where PacketFrameCount > 0
-| extend AvgFrameMs = PacketTotalMs / PacketFrameCount
-;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Hitches-per-hour % over flat threshold
-// ─────────────────────────────────────────────────────────────────────────────
-let hitchRateThreshold = 200.0;
-
-let packetsOverThreshold =
-    hitchesPerEvent
-    | summarize
-        PacketsTotal = count(),
-        PacketsOver  = countif(HitchesPerHour > hitchRateThreshold)
-    | extend PercentOver = todouble(PacketsOver) / PacketsTotal * 100.0
-    | project PacketsTotal, PacketsOver, PercentOver
 ;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -253,53 +185,7 @@ let packetSamplesChart = packetFrameTimePercentiles
 
 //packetFrameTimeChart
 //packetSamplesChart
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Hitches-per-hour percentiles vs. GPU benchmark
-// ─────────────────────────────────────────────────────────────────────────────
-let packetsWithHitchRate =
-    hitchesPerEvent
-    // attach GPU model / VRAM so we can score it
-     | join kind = inner
-         (frameMetricsQuery
-          | project MetricsId, PlayerClientSessionId, GPU, VramMaxGB, OS)
-         on MetricsId
-     //  normalise the GPU name and look-up its synthetic benchmark score
-     | extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
-     | extend Platform = DetectPlatform(OS, NormalizedGpu)
-     | where IsMatchingPlatform(Platform)
-     | join kind = leftouter (GpuScores) on $left.NormalizedGpu == $right.Model 
-     | extend Score = iff(Platform == "PS5" and isempty(Score), 20000, Score) // Give PS5 a flat 20K
-     | extend Score = iff(Platform == "SteamDeck" and isempty(Score), 3000, Score) // Most SteamDeck entries have a GPU score, but if not give it a low-tier bucket value
-     | where isnotempty(Score)                          // drop un-scored GPUs
-     | project MetricsId, HitchesPerHour, Score
-;
-
-// roll-up to percentile statistics per 5 000-wide GPU-score bin
-let hitchRatePercentiles =
-    packetsWithHitchRate
-    | summarize
-          Samples          = count(),
-          P50_HitchesPerHr = percentile(HitchesPerHour, 50),
-          P75_HitchesPerHr = percentile(HitchesPerHour, 75),
-          P90_HitchesPerHr = percentile(HitchesPerHour, 90)
-          //P99_HitchesPerHr = percentile(HitchesPerHour, 99)
-        by bin(Score, 5000)
-    | sort by Score asc
-;
-
-// primary visual – multi-series line chart
-let hitchRateChart =
-    hitchRatePercentiles
-    | project-away Samples
-    | render linechart
-        with (
-            title  = strcat("Hitches per Hour vs. GPU score  (>", tostring(targetFrameMs), " ms)"),
-            xtitle = "GPU score (lower bound of 5 000-wide bin)",
-            ytitle = "Hitches per Hour"
-        )
-;
-
+ 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hitches by slice
 // ─────────────────────────────────────────────────────────────────────────────
@@ -330,6 +216,11 @@ let ExtendSlice = (
 };
 
 
+let packetsWithSlice =
+    packetsWithStats
+    | invoke ExtendSlice(SliceParam)    // adds Slice + OrderKey
+;
+
 let frameTimeBySlice =
     packetsWithStats
     | invoke ExtendSlice(SliceParam)
@@ -344,42 +235,12 @@ let frameTimeBySlice =
 //frameTimeBySlice
 //FrameTimeBySlice(now()-10d, now(), "maxForegroundFPS", "")
 //packetFrameTimePercentiles
-//PacketFrameTimePercentiles(now()-10d, now(), "", 5000)
-
-
 //packetFrameTimeChart
-//packetsWithHitchRate
 //packetSamplesChart
-hitchRatePercentiles
-//hitchRateChart
-//print IsMatchingPlatform("Windows")
-
-
 //packetsOverThreshold
-
-//hitchHistogram
-//dailyHitchRate
-//serverUnity6Sessions
-//dailyHitchRateUnity6
-
-//dailyHitchRate
 //packetsWithStats
 //baseEventQuery
 
-//// Track ingestion rate
-// playfabevents
-// | where Timestamp > ago(7d)
-// | summarize min(Timestamp), max(Timestamp), count() by bin(Timestamp, 30m)
-// | sort by Timestamp desc
-// | extend TimeAgo = now() - Timestamp
-// | project TimeAgo, count_
-// | render timechart
-
-
-
-// TODO gsemple: extract class/mastery/level/ability
-// GameServerLogs
-// | where TimeGenerated > ago(3d)
-// | where Message contains "mastery" and Message contains "sessionDuration"
-// | project-reorder TimeGenerated, Message, JsonDetails
-// | sort by TimeGenerated asc
+// debugging hitch rate
+//packetsWithStats | take 100
+packetsWithSlice | take 100
