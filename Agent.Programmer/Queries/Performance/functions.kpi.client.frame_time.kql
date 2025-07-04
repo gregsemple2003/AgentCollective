@@ -1,7 +1,11 @@
+.execute database script with (ContinueOnErrors=true)
+<|
 // ─────────────────────────────────────────────────────────────────────────────
 // Function to sanitize the GPU name we get so that it matches our benchmark data
 // ─────────────────────────────────────────────────────────────────────────────
-.create-or-alter function with (folder = 'KPI') NormalizeGpu(model:string, vramMaxGB:int) {
+.create-or-alter function with (folder = 'KPI')
+NormalizeGpu(model:string, vramMaxGB:int)
+{
     // Brand prefix removal (case-insensitive)
     let base = trim(" ", replace_regex(model, @"(?i)^(NVIDIA\s+|AMD\s+)", ""));
 
@@ -24,7 +28,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Function to derive the player-platform from OS & NormalizedGpu
 // ─────────────────────────────────────────────────────────────────────────────
-.create-or-alter function with (folder = 'KPI') DetectPlatform(os:string, normalizedGpu:string) {
+.create-or-alter function with (folder = 'KPI')
+DetectPlatform(os:string, normalizedGpu:string)
+{
     // IMPORTANT — do the GPU checks first, then fall back to OS
     case(
         normalizedGpu contains_cs "VANG",              "SteamDeck",   // Steam Deck (Van Gogh APU)
@@ -33,3 +39,146 @@
         "Unknown"                                                     // everything else
     )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Add Slice + OrderKey columns that the caller can use to bucket
+// ─────────────────────────────────────────────────────────────────────────────
+.create-or-alter function with (folder = 'KPI')
+ExtendSlice(
+    T:(
+        TimeGenerated:datetime,
+        Scene:string,
+        AvgFrameMs:double,
+        MasterQuality:int,
+        MaxForegroundFPS:int,
+        VramMaxGB:int),
+    slice:string)
+{
+    T
+    | extend MaxForegroundFPSBucket = bin(MaxForegroundFPS, 20)
+    | extend Slice = case(
+        slice == "scene",           tostring(Scene),
+        slice == "day",             format_datetime(TimeGenerated, "yyyy-MM-dd"),
+        slice == "vramMax",         strcat(tostring(VramMaxGB), " GB"),
+        slice == "maxForegroundFPS",tostring(MaxForegroundFPSBucket),
+        slice == "masterQuality",   tostring(MasterQuality),
+        "" )
+    // Keep ordering on "lower FPS first" (higher AvgFrameMs ⇒ lower FPS)
+    | extend OrderKey = 1000.0 / AvgFrameMs
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Base event pull
+// ─────────────────────────────────────────────────────────────────────────────
+.create-or-alter function with (folder = 'KPI')
+BaseEventQuery(startTime:datetime, endTime:datetime)
+{
+    playfabevents
+    | where Timestamp >= startTime and Timestamp < endTime
+    | where FullName_Name has "lastepoch_session_performance_metrics" 
+        or (FullName_Name has "lastepoch_client_log" and EventData contains "frameTimeMetrics") // backwards compat with old event format
+    | extend JsonDetails           = tostring(coalesce(EventData.json_details, EventData.jsonDetails)) // backwards compat with old event format
+    | extend TimeGenerated         = Timestamp
+    | extend PlayerClientSessionId = tostring(EventData.session)
+    | extend Scene                 = tostring(parse_json(JsonDetails).scene)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Frame-time metrics – one row per performance event
+// ─────────────────────────────────────────────────────────────────────────────
+.create-or-alter function with (folder = 'KPI')
+FrameMetricsQuery(startTime:datetime, endTime:datetime)
+{
+    BaseEventQuery(startTime, endTime)
+    //| project TimeGenerated, PlayerClientSessionId, JsonDetails
+    | sort by TimeGenerated asc
+    | extend MetricsId   = strcat(TimeGenerated, "_", PlayerClientSessionId)
+    | extend d           = parse_json(JsonDetails)
+    | extend MetricsTime = todouble(d.elapsedTimeSeconds)        // session time at this packet
+    | extend OS          = tostring(d.processMetrics.systemInfo.os)
+    | extend GPU         = tostring(d.processMetrics.systemInfo.gpu)
+    | extend VramMaxGB   = toint(round( todouble(d.processMetrics.systemInfo.maxVramMemory) / 1024.0 ))
+    | extend MasterQuality     = toint(d.graphicsConfig.masterQuality)
+    | extend LimitForegroundFPS = tobool(d.graphicsConfig.limitForegroundFPS)
+    | extend MaxForegroundFPS   = iff(LimitForegroundFPS, toint(d.graphicsConfig.maxForegroundFPS), toint(200))
+    // filter for platform (temp)
+    //| where GPU contains "VANG"           // for steamdeck
+    //| where GPU contains "native gfx jobs" // for ps5
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Avg-frame-time per *packet*  →  P50 / P99 across packets
+// ─────────────────────────────────────────────────────────────────────────────
+.create-or-alter function with (folder = 'KPI')
+PacketsWithStats(startTime:datetime, endTime:datetime, platform:string)
+{
+    FrameMetricsQuery(startTime, endTime)
+    | mv-expand d.frameTimeMetrics.buckets
+    | extend b = parse_json(d_frameTimeMetrics_buckets)
+    | extend
+        BucketN   = todouble(b.n),
+        BucketAvg = todouble(b.avg)
+    | where BucketN > 0 and isfinite(BucketAvg)
+    // weighted mean for this packet (MetricsId)
+    | extend NormalizedGpu = NormalizeGpu(GPU, VramMaxGB)
+    | extend Platform = DetectPlatform(OS, NormalizedGpu)
+    | where isempty(platform) or Platform has platform
+    | join kind = leftouter (GpuScores) on $left.NormalizedGpu == $right.Model
+    | summarize
+        PacketFrameCount = sum(BucketN),
+        PacketTotalMs    = sum(BucketN * BucketAvg),
+        VramMaxGB        = any(VramMaxGB),
+        MaxForegroundFPS = any(MaxForegroundFPS),
+        MasterQuality    = any(MasterQuality)
+      by MetricsId, TimeGenerated, NormalizedGpu, Score, OS, Platform, Scene
+    | extend Score = iff(Platform == "PS5"       and isempty(Score), 20000, Score) // Give PS5 a flat 20K
+    | extend Score = iff(Platform == "SteamDeck" and isempty(Score), 3000,  Score) // SteamDeck fallback
+    | where PacketFrameCount > 0
+    | extend AvgFrameMs = PacketTotalMs / PacketFrameCount
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Frame-time by slice
+// ─────────────────────────────────────────────────────────────────────────────
+.create-or-alter function with (folder = 'KPI')
+FrameTimeBySlice(startTime:datetime, endTime:datetime, slice:string, platform:string)
+{
+    PacketsWithStats(startTime, endTime, platform)
+    | invoke ExtendSlice(slice)
+    | summarize
+          Samples  = count(),
+          P50_FPS  = 1000.0 / percentile(AvgFrameMs, 50),
+          P90_FPS  = 1000.0 / percentile(AvgFrameMs, 90),
+          P99_FPS  = 1000.0 / percentile(AvgFrameMs, 99)
+        by Slice
+    | where isfinite(P50_FPS)  // keep only valid rows
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Frame-time percentiles across packets, bucketed by GPU Score
+// ─────────────────────────────────────────────────────────────────────────────
+.create-or-alter function with (folder = 'KPI')
+PacketFrameTimePercentiles(
+    startTime:datetime,          // inclusive lower bound
+    endTime:datetime,            // exclusive upper bound
+    platform:string = "",        // "" = all, else filters DetectPlatform result
+    scoreBin:int    = 5000       // bucket width for GPU Score
+)
+{
+    PacketsWithStats(startTime, endTime, platform)
+    | summarize
+          Samples   = count(),
+          P50_FPS   = 1000.0 / percentile(AvgFrameMs, 50),
+          P90_FPS   = 1000.0 / percentile(AvgFrameMs, 90),
+          P99_FPS   = 1000.0 / percentile(AvgFrameMs, 99),
+          P99_9_FPS = 1000.0 / percentile(AvgFrameMs, 99.9)
+        by ScoreBin = bin(Score, scoreBin)
+    | sort by ScoreBin asc
+}
+
+
+
+
+
+
+

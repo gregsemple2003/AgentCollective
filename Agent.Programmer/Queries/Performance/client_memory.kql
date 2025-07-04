@@ -142,7 +142,13 @@ let lowMemoryQuery = baseEventQuery
 | summarize count() by MaxMemory
 ;
 
+let percentilesMemQuery = avgMemoryPerSession
+| summarize percentiles(AverageMemGB, 50, 90, 99)
+;
+
 //lowMemoryQuery
 //dailyAvgMemoryByProfile
-normalizedMemoryPerSession
+//normalizedMemoryPerSession
+//baseEventQuery | take 10
+percentilesMemQuery
 //dailyAvgMemoryPerSession

@@ -1,0 +1,26 @@
+GameServerLogs
+| where TimeGenerated > ago(1d)
+| where Location !has "hkhkg"
+| take 100
+| where Host contains "a-asia-east"
+| project TimeGenerated, Host, Location
+//| summarize count() by Location
+GameServerMetrics
+| where TimeGenerated > ago(1d)
+| summarize count() by Name
+
+GameServerMetrics
+| where TimeGenerated > ago(1d)
+| where Host !contains "a-asia-east" // hkhkg
+| where Name == "Network Message Resent Count"
+//| take 100
+| summarize sum(Sum) by Host
+| summarize avg(sum_Sum) by 1
+
+GameServerMetrics
+| where TimeGenerated > ago(1d)
+| where Host contains "a-asia-east" // hkhkg
+| where Name == "Player Round Trip Latency Milliseconds"
+//| take 100
+| summarize AvgLatency = sum(Sum) / sum(Count) by Host
+| summarize percentiles(AvgLatency, 50, 90, 99) by 1

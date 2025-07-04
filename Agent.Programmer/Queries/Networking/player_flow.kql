@@ -1,4 +1,4 @@
-﻿// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // Parameters – adjust as needed
 // ─────────────────────────────────────────────────────────────────────────────
 //set query_results_cache_max_age = time(15m);
@@ -175,7 +175,7 @@ let PlayerConnects = (_from:datetime, _to:datetime)
 {
     GameServerLogs
     | where TimeGenerated between (_from .. _to)
-    | where Message has "ServerNetworkService adding a new connection from"
+    | where Message has "status: Connected, reason"
     | project TimeGenerated
 };
 
@@ -184,11 +184,12 @@ let AbnormalDisconnects = (_from:datetime, _to:datetime)
     GameServerLogs
     | where TimeGenerated between (_from .. _to)
     | where Message has "Disconnected, reason:"
-          and not (Message has "Client shutting down"
-                    or Message has "Kicked for inactivity"
-                    or Message has "Closing existing server connection and creating new connection")
     | parse Message with * "Disconnected, reason: '" Reason:string "'" *
-    | project TimeGenerated, Reason
+    | where Reason !contains "shutting down"
+    | where Reason !contains "Closing existing"
+    | where Reason !contains "Kick"
+    
+    | project TimeGenerated, Message, Reason
 };
 
 let AbnormalDisconnects2 = (_from:datetime, _to:datetime)
@@ -214,31 +215,40 @@ let AbnormalDisconnects2 = (_from:datetime, _to:datetime)
     | project TimeGenerated, Reason
 
 };
-
 // ──────────────────────────────────────────────────────────────
-//  Daily abnormal disconnect rate (from server's perspective)
+//  Daily abnormal-disconnect breakdown *by reason*
 // ──────────────────────────────────────────────────────────────
-let DailyAbnormalDisconnectRate = (from:datetime, end:datetime)
+let DailyDisconnectReasonBreakdown = (startTime:datetime, endTime:datetime)
 {
+    //
+    // 1. "Connected" events per day
+    //
     let ConnectsPerDay =
-        PlayerConnects(from, end)
-        | summarize Connects = count() by Day = bin(TimeGenerated, 1d);
+        PlayerConnects(startTime, endTime)
+        | summarize Connects = count()
+          by Day = bin(TimeGenerated, 1d);
 
-    let AbnormalsPerDay =
-        AbnormalDisconnects(from, end)
-        | summarize AbnormalDisconnects = count() by Day = bin(TimeGenerated, 1d);
+    //
+    // 2. Abnormal disconnects per day, per reason
+    //
+    let AbnormalPerDay =
+        AbnormalDisconnects(startTime, endTime)
+        | summarize Disconnects = count()
+          by Day = bin(TimeGenerated, 1d);
 
-    ConnectsPerDay
-    | join kind = inner (AbnormalsPerDay) on Day
+    //
+    // 3. Join & compute rate
+    //
+    AbnormalPerDay
+    | join kind = inner (ConnectsPerDay) on Day
     | extend DisconnectRatePercent =
-             100.0 * todouble(AbnormalDisconnects) / todouble(Connects)
+             100.0 * todouble(Disconnects) / todouble(Connects)
     | project Day,
-              //Connects,
-              //AbnormalDisconnects,
+              Disconnects,
               DisconnectRatePercent
-    | order by Day asc
-    | render timechart                         // comment out if you only want the table
+    | order by Day asc, DisconnectRatePercent desc
 };
+
 
 let DisconnectReasonBreakdown = (from:datetime, end:datetime)
 {
@@ -253,7 +263,14 @@ let DisconnectReasonBreakdown = (from:datetime, end:datetime)
     | order by DisconnectRatePercent desc
 };
 
-//DisconnectReasonBreakdown(7d)
+//DailyAbnormalDisconnectRate(ago(7d), now())
+//DisconnectReasonBreakdown(ago(1d), now())
+DailyDisconnectReasonBreakdown(ago(7d), now())
+//DailyAbnormalDisconnectRate(ago(7d), now())
+//PlayerConnects(ago(1d), now()) | count
+//AbnormalDisconnects(ago(1d), now())
+
+//DisconnectReasonBreakdown(ago(7d), now())
 //let start = ago(10d);
 //DailyAbnormalDisconnectRate(start, start+3d)
 //DisconnectReasonBreakdown(start, start+3d);
@@ -297,12 +314,18 @@ let DisconnectReasonBreakdown = (from:datetime, end:datetime)
 // | project-reorder TimeGenerated, Message, StackTrace
 // | sort by TimeGenerated asc
 
-GameServerLogs
-| where TimeGenerated > ago(2d)
-// | where Message contains "Received signal: '15'."
-// | summarize count() by bin(TimeGenerated, 15m), Region
-// | sort by TimeGenerated asc
-// | render timechart
-| where Host has "prod-prod-a-eu-west-pcxgr-xx7tv"
-| project-reorder TimeGenerated, Message, PlayerCount
-| sort by TimeGenerated desc
+// GameServerLogs
+// | where TimeGenerated > ago(2d)
+// // | where Message contains "Received signal: '15'."
+// // | summarize count() by bin(TimeGenerated, 15m), Region
+// // | sort by TimeGenerated asc
+// // | render timechart
+// | where Host has "prod-prod-a-eu-west-pcxgr-xx7tv"
+// | project-reorder TimeGenerated, Message, PlayerCount
+// | sort by TimeGenerated desc
+
+// GameServerLogs
+// | where TimeGenerated between (ago(1d) .. now())
+// //| where Message has "status: Connected, reason"
+// | where Message has "status: Disconnected, reason"
+// | project TimeGenerated, Message

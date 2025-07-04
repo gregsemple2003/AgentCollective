@@ -341,7 +341,11 @@ let frameTimeBySlice =
         by Slice
     | where isfinite(P50_FPS);          // keep only valid rows
 
-frameTimeBySlice
+//frameTimeBySlice
+//FrameTimeBySlice(now()-10d, now(), "maxForegroundFPS", "")
+//packetFrameTimePercentiles
+//PacketFrameTimePercentiles(now()-10d, now(), "", 5000)
+
 
 //packetFrameTimeChart
 //packetsWithHitchRate
@@ -370,6 +374,8 @@ frameTimeBySlice
 // | extend TimeAgo = now() - Timestamp
 // | project TimeAgo, count_
 // | render timechart
+
+
 
 // TODO gsemple: extract class/mastery/level/ability
 // GameServerLogs

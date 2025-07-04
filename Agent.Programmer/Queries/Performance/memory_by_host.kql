@@ -48,16 +48,24 @@ avgMemoryPerSession
 | project Profile, AverageMemGB, ProfileTotalSamples
 | sort by AverageMemGB desc;
  
+let avgMemoryPercentiles = avgMemoryPerSession
+| summarize
+      P50_Mem = percentile(AverageMemGB, 50),
+      P90_Mem = percentile(AverageMemGB, 90),
+      P99_Mem = percentile(AverageMemGB, 99)
+;
+
+avgMemoryPercentiles
 // // CUSTOM: unity 6 upgrade
 // avgMemoryByProfile
 // | where Profile in ("dev1", "nightlyrelease", "nightlymain")
 // | project Profile, AverageMemGB
 // | order by Profile asc
 // | render columnchart
-
-avgMemoryPerSession
-| where Profile in ("dev1", "nightlyrelease", "nightlymain")
-| project SessionTimeSecs, AverageMemGB, Profile
-| summarize AvgMemGB = avg(AverageMemGB)    // mean of all sessions in the bin
-          by ElapsedBucket = bin(SessionTimeSecs, 60), Profile
-| render linechart 
+//avgMemoryByProfile
+// avgMemoryPerSession
+// | where Profile in ("dev1", "nightlyrelease", "nightlymain")
+// | project SessionTimeSecs, AverageMemGB, Profile
+// | summarize AvgMemGB = avg(AverageMemGB)    // mean of all sessions in the bin
+//           by ElapsedBucket = bin(SessionTimeSecs, 60), Profile
+// | render linechart 

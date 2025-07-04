@@ -1,7 +1,7 @@
-﻿//-------------------------------------------------------------------------
+//-------------------------------------------------------------------------
 // Parameters
 //-------------------------------------------------------------------------
-let targetAccount = "9B3EB06BA7F5E067";
+let targetAccount = "";
 let startTime = ago(3d);
 
 //-------------------------------------------------------------------------
@@ -10,7 +10,7 @@ let startTime = ago(3d);
 let rollbackQueryRaw = GameServerLogs
 | where TimeGenerated > startTime
 | where Message contains "operation completed"
-| where isnotempty(targetAccount) and JsonDetails contains targetAccount
+| where targetAccount == "" or JsonDetails contains targetAccount
 | extend d = parse_json(JsonDetails) 
 | extend
     MasterAccountId = tostring(d.MasterPlayerAccountId),
@@ -40,7 +40,9 @@ let rollbackSeqnoQuery = rollbackQueryRaw
             )
         )
     )
-| where isnotempty(Delta) and isnotnull(Delta) //and Delta < 0
+// NOTE: Delta == 0 is a valid situation since sometimes a write happens on the old server
+// after the player disconnects.
+| where isnotempty(Delta) and isnotnull(Delta) and Delta < 0 
 | sort by TimeGenerated asc
 ;
 
@@ -57,6 +59,7 @@ let playerLogsQuery = GameServerLogs
 | project TimeGenerated, Message, JsonDetails
 ;
 
+//rollbackQueryRaw
 rollbackSeqnoQuery
 //playerLogsQuery
 

@@ -51,6 +51,17 @@ avgCpuPerSession
 | project Profile, AverageCpuPct, ProfileTotalSamples
 | sort by AverageCpuPct desc;
 
+let percentilesCpu = avgCpuPerSession
+| where TimeGenerated > ago(30d)
+| summarize
+        p50 = percentile(AverageCpuPct, 50),
+        p90 = percentile(AverageCpuPct, 90),
+        p99 = percentile(AverageCpuPct, 99)
+      //by Profile   // or UnityVersion, Host, etc.
+;
+
+percentilesCpu
+
 // // Custom: unity 6 cpu comparison
 // avgCpuByProfile
 // | where Profile in ("dev1", "nightlyrelease", "nightlymain")
@@ -66,10 +77,11 @@ avgCpuPerSession
 //           by ElapsedBucket = bin(SessionTimeSecs, 60), Profile
 // | render linechart 
 
-avgCpuPerSession
+//avgCpuPerSession
 // GameServerLogs
 //| extend IsTargetSet = (Profile has "qa-13") and (UnityVersion has "6000.0.42f1")
-| where (Profile has "qa-13")
+//| where (Profile has "qa-13")
 //| where IsTargetSet == true
-| where TimeGenerated > ago(30d)
- | summarize count(), avg(AverageCpuPct) by UnityVersion//, bin(TimeGenerated, 1d)
+//| where TimeGenerated > ago(3d)
+//| summarize count(), avg(AverageCpuPct) by UnityVersion//, bin(TimeGenerated, 1d)
+

@@ -374,7 +374,8 @@ hitchReportsWithSignature
          LastTimeMs = todouble(GpuPass.lastTimeMs)
 | where PassName == targetPassName and isnotnull(LastTimeMs)
 | where LastTimeMs < 300
-| take 100
+| take 1000
+| project TimeGenerated, HitchTimeMillis, CPU, GPU, PassName, LastTimeMs, GpuResults, UserName, ActiveScene, Host, PlayfabId, GPUVRAM, HotPathArray, HitchCategories//, JsonDetails
 // | summarize HitCount = count() by BucketMs = bin(LastTimeMs, 10.0)   // ← 10 ms
 // | order by BucketMs
 // | render columnchart
