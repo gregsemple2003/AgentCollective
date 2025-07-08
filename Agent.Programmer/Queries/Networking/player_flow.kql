@@ -265,7 +265,7 @@ let DisconnectReasonBreakdown = (from:datetime, end:datetime)
 
 //DailyAbnormalDisconnectRate(ago(7d), now())
 //DisconnectReasonBreakdown(ago(1d), now())
-DailyDisconnectReasonBreakdown(ago(7d), now())
+//DailyDisconnectReasonBreakdown(ago(7d), now())
 //DailyAbnormalDisconnectRate(ago(7d), now())
 //PlayerConnects(ago(1d), now()) | count
 //AbnormalDisconnects(ago(1d), now())
@@ -329,3 +329,25 @@ DailyDisconnectReasonBreakdown(ago(7d), now())
 // //| where Message has "status: Connected, reason"
 // | where Message has "status: Disconnected, reason"
 // | project TimeGenerated, Message
+
+let loginEvents = GameServerLogs
+| where TimeGenerated > ago(1d)
+//| where JsonDetails contains "StartPlayerInitialisation"
+//| where Message contains "3A372387A7B19511"
+//| where Message contains "exp404test1"
+| where Message endswith " joined."
+| project TimeGenerated, Message, JsonDetails
+| sort by TimeGenerated desc
+| where Message contains "talun"// or Message contains "greg"
+| take 100
+;
+
+let sessionMetricsEvents = playfabevents
+| where Timestamp > ago(1d)
+| where FullName_Name has "lastepoch_session_performance_metrics" 
+    or (FullName_Name has "lastepoch_client_log" and EventData contains "frameTimeMetrics")// backwards compat with old event format
+| where EventData contains "236C6464D48B5CEA"
+//| take 10
+;
+
+//sessionMetricsEvents
