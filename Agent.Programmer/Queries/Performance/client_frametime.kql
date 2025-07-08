@@ -3,7 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 let InTimeRange = (ts:datetime)
 {
-    ts between (ago(1d) .. now())
+    //ts between (ago(1d) .. now())
+    ts between (datetime(2025-04-19) .. datetime(2025-04-19)+1h)
     // $__timeFilter(ts) // for Grafana
 };
 let targetPlatform = "";
@@ -18,6 +19,7 @@ let minSessionTime = 1.0;           // ignore <1 s sessions
 let maxSessionTime = 600.0;         // cap sessions at 10 min; set 0 to disable
 let minBucketSampleCount = 3;      // minimum number of sessions in a bucket or it will be dropped
 let targetProfiles = dynamic(["nightlyrelease"]);
+let SliceParam = "level";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Function to derive the player-platform from OS & NormalizedGpu
@@ -59,6 +61,10 @@ let frameMetricsQuery = baseEventQuery
 | extend GPU = tostring(d.processMetrics.systemInfo.gpu)
 | extend VramMaxGB = toint(round( todouble(d.processMetrics.systemInfo.maxVramMemory) / 1024.0 ))
 | extend MasterQuality = toint(d.graphicsConfig.masterQuality)
+| extend DetailShadows = tobool(d.graphicsConfig.detailShadows)
+| extend DisplayMode = toint(d.graphicsConfig.displayMode)
+| extend VSyncLevel = toint(d.graphicsConfig.vSyncLevel)
+| extend ScreenPixels = tolong(tolong(d.graphicsConfig.resolution.height) * tolong(d.graphicsConfig.resolution.width) / 1e6)
 | extend LimitForegroundFPS = tobool(d.graphicsConfig.limitForegroundFPS)
 | extend MaxForegroundFPS = iff(LimitForegroundFPS, toint(d.graphicsConfig.maxForegroundFPS), toint(200))
 // filter for platform (temp)
@@ -113,10 +119,74 @@ let clientSessionIdToUnity6 =
     //| project PlayerClientSessionId, Profile
 ;
 
+let accountToCharacterId = GameServerLogs
+| where InTimeRange(TimeGenerated)
+| where Message startswith "StartPlayerInitialisation operation completed"
+| extend
+    AccountId   = tostring(JsonDetails.MasterPlayerAccountId),
+    CharacterId = tostring(JsonDetails.EntityId)
+// Keep the most-recent login for each character in the time window
+| summarize arg_max(TimeGenerated, AccountId) by CharacterId
+| project CharacterId, AccountId
+;
+    
+let clientSessionIdToAccountId = GameServerLogs
+| where InTimeRange(TimeGenerated)
+| where isnotempty(PlayerClientSessionId)
+| where Message startswith "Player" and Message has "joined"
+| extend AccountId = tostring(JsonDetails.MasterPlayerAccountId)
+// keep the last session we saw for each account in the window
+| summarize arg_max(TimeGenerated, PlayerClientSessionId) by AccountId
+//| project-reorder TimeGenerated, PlayerClientSessionId, AccountId//, Message, JsonDetails
+| project AccountId, PlayerClientSessionId
+;
+
+let levelUpEvents = GameServerLogs
+    | where InTimeRange(TimeGenerated)
+    | where Message startswith "Character levelled up"
+    | extend d = parse_json(JsonDetails)
+    | extend  CharacterId = tostring(d.Id),
+              Class       = tostring(d.Labels.Class),
+              Mastery     = tostring(d.Labels.Mastery),
+              Level       = toint(d.NewLevel)
+    | project TimeGenerated, CharacterId, Class, Mastery, Level
+;
+
+let levelUpEnriched =
+    levelUpEvents
+    // CharacterId → AccountId
+    | join kind=leftouter accountToCharacterId on CharacterId
+    // AccountId   → PlayerClientSessionId
+    | join kind=leftouter clientSessionIdToAccountId on AccountId
+    | project TimeGenerated, CharacterId, AccountId, PlayerClientSessionId,
+              Class, Mastery, Level
+;
+
+// We associate each session id to a summary of level-up activity.
+// It would be too expensive to find the closest matching level-up event for all session metrics events.
+// So we approximate by tweening the level according to time through the session.
+// This is linear, which might be off but most sessions are in a ~10 level range.
+let clientSessionIdToLevelUpSummary = levelUpEnriched 
+// how many level-ups per client session id
+//| summarize count() by PlayerClientSessionId, AccountId, CharacterId
+| summarize CharactersUsed = dcount(CharacterId)        // or count_distinct(CharacterId)
+          , CharacterIds  = make_set(CharacterId, 100)  // optional: list them          
+          , MinTime = min(TimeGenerated)
+          , MaxTime = max(TimeGenerated)
+          , MinLevel = min(Level)
+          , MaxLevel = max(Level)
+          , Class = any(Class) // only valid when CharactersUsed == 1
+          , Mastery = any(Mastery) // only valid when CharactersUsed == 1
+  by PlayerClientSessionId, AccountId
+| where CharactersUsed == 1
+//| summarize count() by CharactersUsed
+;
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Session metrics event statistics (one per row): FPS, hitch.
 // ─────────────────────────────────────────────────────────────────────────────
-let packetsWithStats = frameMetricsQuery
+let packetsCore = frameMetricsQuery
 | mv-expand d.frameTimeMetrics.buckets
 | extend b = parse_json(d_frameTimeMetrics_buckets)
 | extend
@@ -138,13 +208,52 @@ let packetsWithStats = frameMetricsQuery
     VramMaxGB         = any(VramMaxGB),
     MaxForegroundFPS  = any(MaxForegroundFPS),
     Score             = any(Score),
-    MasterQuality     = any(MasterQuality)
-  by MetricsId, TimeGenerated, NormalizedGpu, OS, Platform, Scene
+    MasterQuality     = any(MasterQuality),
+    DetailShadows     = any(DetailShadows),
+    DisplayMode       = any(DisplayMode),
+    VSyncLevel        = any(VSyncLevel),
+    ScreenPixels      = any(ScreenPixels)
+  by MetricsId, TimeGenerated, NormalizedGpu, OS, Platform, Scene, PlayerClientSessionId
 // Fill-in synthetic gpu scores for platforms that aren't directly
 | extend Score = iff(Platform == "PS5" and isempty(Score), 20000, Score) // Give PS5 a flat 20K
 | extend Score = iff(Platform == "SteamDeck" and isempty(Score), 3000, Score) // Most SteamDeck entries have a GPU score, but if not give it a low-tier bucket value
 | where PacketFrameCount > 0
 ;
+
+let packetsWithLevel = packetsCore
+// Join the level-up summary and tween character level per packet
+| join kind=leftouter (clientSessionIdToLevelUpSummary) on PlayerClientSessionId
+| extend TweenedLevel = toint(
+      MinLevel
+      + iff(MaxLevel > MinLevel and MaxTime > MinTime,
+            todouble(datetime_diff('second', TimeGenerated, MinTime))
+            / todouble(datetime_diff('second', MaxTime,     MinTime))
+            * (MaxLevel - MinLevel),
+            0.0)
+  )
+| extend LevelBucket = toint(bin(TweenedLevel, 10))
+;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Conditional join depending on slice param to populate other columns
+// - If the join isn't required, it won't be part of the query plan, won't be executed at all.  
+// - This saves several minutes of query time, since the level join is expensive.
+// ─────────────────────────────────────────────────────────────────────────────
+let packetsWithStats = //packetsCore;
+    union
+    (
+        packetsWithLevel
+        | where SliceParam in ("level", "class_mastery")
+    ),
+    (
+        packetsCore
+        | where SliceParam !in ("level", "class_mastery")
+        | extend TweenedLevel = toint(0)
+        | extend LevelBucket = toint(0)
+        | extend Class = ""
+        | extend Mastery = ""
+    );
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Percentiles across packets
@@ -189,7 +298,6 @@ let packetSamplesChart = packetFrameTimePercentiles
 // ─────────────────────────────────────────────────────────────────────────────
 // Hitches by slice
 // ─────────────────────────────────────────────────────────────────────────────
-let SliceParam = "maxForegroundFPS";                    // Grafana variable
 
 // Add Slice + OrderKey columns that the caller can use to bucket
 let ExtendSlice = (
@@ -197,24 +305,47 @@ let ExtendSlice = (
             TimeGenerated:datetime,
             Scene:string,
             AvgFrameMs:double,
+            Score:long,
             MasterQuality:int,
             MaxForegroundFPS:int,
-            VramMaxGB:int),
+            TweenedLevel:int,
+            Class:string,
+            Mastery:string,
+            LevelBucket:int,
+            VramMaxGB:int,
+            DetailShadows:bool,
+            DisplayMode:int,
+            VSyncLevel:int,
+            ScreenPixels:long
+            ),
+            
         slice:string )
 {
     T
     | extend MaxForegroundFPSBucket   = bin(MaxForegroundFPS, 20)
+    | extend ClassMastery = strcat(Class, "_", Mastery)
+
     | extend Slice = case(
         slice == "scene", tostring(Scene),
         slice == "day",   format_datetime(TimeGenerated, "yyyy-MM-dd"),
-        slice == "vramMax", strcat(tostring(VramMaxGB), " GB"),
+        slice == "score", strcat(tostring(bin(Score, 5000))),
+        slice == "vramMax", strcat(tostring(VramMaxGB)),
         slice == "maxForegroundFPS",  tostring(MaxForegroundFPSBucket),
         slice == "masterQuality",  tostring(MasterQuality),
-        "" )
-    // Keep ordering on "lower FPS first" (higher AvgFrameMs ⇒ lower FPS)
-    | extend OrderKey = 1000.0 / AvgFrameMs
+        slice == "detailShadows",      tostring(DetailShadows),
+        slice == "displayMode",        tostring(DisplayMode),
+        slice == "vSyncLevel",         tostring(VSyncLevel),
+        slice == "screenPixels",       tostring(bin(ScreenPixels, 1.0)),
+        slice == "level", tostring(LevelBucket),
+        slice == "class_mastery", tostring(ClassMastery),
+        slice == "all",  "all",
+        "" )   
+     | extend SortKey = case(                  // ONE line covers all sorts
+        slice in ("scene", "class_mastery"), double(null),    // string dimensions have a null sort key
+        todouble(Slice))
+     | where slice != "level" or (SortKey >= 0 and SortKey <= 100) // filter level
+     | where slice != "vramMax" or (SortKey >= 2 and SortKey <= 24) // filter vramMax
 };
-
 
 let packetsWithSlice =
     packetsWithStats
@@ -222,8 +353,7 @@ let packetsWithSlice =
 ;
 
 let frameTimeBySlice =
-    packetsWithStats
-    | invoke ExtendSlice(SliceParam)
+    packetsWithSlice
     | summarize
           Samples = count(),
           P50_FPS = 1000.0 / percentile(AvgFrameMs, 50),
@@ -231,6 +361,23 @@ let frameTimeBySlice =
           P99_FPS = 1000.0 / percentile(AvgFrameMs, 99)
         by Slice
     | where isfinite(P50_FPS);          // keep only valid rows
+
+let materializedPacketsWithSlice = materialize(packetsWithSlice);
+let totalSampleCount = toscalar(materializedPacketsWithSlice | summarize count());
+
+let packetHitchPercentiles = materializedPacketsWithSlice
+| summarize
+      Samples            = count(),
+      P50_HitchesPerHr   = percentile(HitchesPerHour, 50),
+      P75_HitchesPerHr   = percentile(HitchesPerHour, 75),
+      P99_HitchesPerHr   = percentile(HitchesPerHour, 99)
+      by Slice, SortKey
+    | extend SamplesPercent = round(100.0 * Samples / totalSampleCount, 2)
+    | where Samples > 20
+    | sort by SortKey asc nulls last, Slice asc
+    | project-away SortKey
+    | project-reorder Slice, Samples, SamplesPercent
+;
 
 //frameTimeBySlice
 //FrameTimeBySlice(now()-10d, now(), "maxForegroundFPS", "")
@@ -243,4 +390,36 @@ let frameTimeBySlice =
 
 // debugging hitch rate
 //packetsWithStats | take 100
-packetsWithSlice | take 100
+packetHitchPercentiles
+// | project Slice, P75_HitchesPerHr
+// | render columnchart
+//       with (
+//           title   = "P75 hitches per hour by slice",
+//           xtitle  = "Slice",
+//           ytitle  = "P75 hitches / hr"
+//       )
+
+//levelUpEvents | take 100
+//baseEventQuery | take 100
+
+// Which events are directly tied to client session id
+// GameServerLogs
+// | where InTimeRange(TimeGenerated)
+// | where isnotempty(PlayerClientSessionId)
+// | project-reorder TimeGenerated, Message, Category, JsonDetails
+// | where Message !contains "Set Level"
+// | take 100
+// //| summarize arg_max(TimeGenerated, Profile) by PlayerClientSessionId
+
+// GameServerLogs
+// | where InTimeRange(TimeGenerated)
+// | where isnotempty(PlayerClientSessionId)
+// //| where Message !contains "Set Level"
+// //| where JsonDetails contains "StartPlayerInitialisation"
+// | project-reorder TimeGenerated, Message, Category, JsonDetails, PlayerClientSessionId
+// | take 100
+
+//clientSessionIdToLevelUpSummary
+//clientSessionIdToAccountId | take 100
+//accountToCharacterId | take 100
+//levelUpEnriched | take 100
