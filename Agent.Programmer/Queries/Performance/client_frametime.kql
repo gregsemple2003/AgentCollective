@@ -379,6 +379,19 @@ let packetHitchPercentiles = materializedPacketsWithSlice
     | project-reorder Slice, Samples, SamplesPercent
 ;
 
+let packetFpsPercentiles = packetsWithSlice
+| summarize
+      Samples   = count(),
+      P50_FPS   = 1000.0 / percentile(AvgFrameMs, 50),
+      P75_FPS   = 1000.0 / percentile(AvgFrameMs, 75),
+      P99_FPS   = 1000.0 / percentile(AvgFrameMs, 99)
+    by Slice, SortKey
+| where Samples >= minBucketSampleCount
+| sort by SortKey asc nulls last, Slice asc
+| project-away SortKey
+| project-reorder Slice, Samples, P50_FPS, P75_FPS, P99_FPS
+;
+
 //frameTimeBySlice
 //FrameTimeBySlice(now()-10d, now(), "maxForegroundFPS", "")
 //packetFrameTimePercentiles
@@ -388,9 +401,8 @@ let packetHitchPercentiles = materializedPacketsWithSlice
 //packetsWithStats
 //baseEventQuery
 
-// debugging hitch rate
-//packetsWithStats | take 100
-packetHitchPercentiles
+// hitch rate by slice
+// packetHitchPercentiles
 // | project Slice, P75_HitchesPerHr
 // | render columnchart
 //       with (
@@ -398,9 +410,9 @@ packetHitchPercentiles
 //           xtitle  = "Slice",
 //           ytitle  = "P75 hitches / hr"
 //       )
-
-//levelUpEvents | take 100
-//baseEventQuery | take 100
+ 
+// FPS by slice
+packetFpsPercentiles
 
 // Which events are directly tied to client session id
 // GameServerLogs
