@@ -6,6 +6,11 @@
     <ConnectionString>Data Source=https://lastepochct.westus2.kusto.windows.net;Initial Catalog=NetDefaultDB;Authority Id=adminlastepochgame.onmicrosoft.com</ConnectionString>
   </ServerDescriptionBase>
   <ServerDescriptionBase xsi:type="ServerDescription">
+    <Name>lastepoch-loganalytics-wus</Name>
+    <Details>https://ade.loganalytics.io/subscriptions/d406859c-8c7b-4143-8ecd-91570eafb534/resourceGroups/lastepoch-shared-wus/providers/Microsoft.OperationalInsights/workspaces/lastepoch-loganalytics-wus</Details>
+    <ConnectionString>Data Source=https://ade.loganalytics.io/subscriptions/d406859c-8c7b-4143-8ecd-91570eafb534/resourceGroups/lastepoch-shared-wus/providers/Microsoft.OperationalInsights/workspaces/lastepoch-loganalytics-wus;Initial Catalog=NetDefaultDB</ConnectionString>
+  </ServerDescriptionBase>
+  <ServerDescriptionBase xsi:type="ServerDescription">
     <Name>lastepochdev</Name>
     <Details>https://lastepochdev.westus2.kusto.windows.net</Details>
     <ConnectionString>Data Source=https://lastepochdev.westus2.kusto.windows.net;Initial Catalog=NetDefaultDB;Authority Id=adminlastepochgame.onmicrosoft.com</ConnectionString>
@@ -14,10 +19,5 @@
     <Name>lastepochprod</Name>
     <Details>https://lastepochprod.westus2.kusto.windows.net</Details>
     <ConnectionString>Data Source=https://lastepochprod.westus2.kusto.windows.net;Initial Catalog=NetDefaultDB;Authority Id=adminlastepochgame.onmicrosoft.com</ConnectionString>
-  </ServerDescriptionBase>
-  <ServerDescriptionBase xsi:type="ServerDescription">
-    <Name>lastepoch-loganalytics-wus</Name>
-    <Details>https://ade.loganalytics.io/subscriptions/d406859c-8c7b-4143-8ecd-91570eafb534/resourceGroups/lastepoch-shared-wus/providers/Microsoft.OperationalInsights/workspaces/lastepoch-loganalytics-wus</Details>
-    <ConnectionString>Data Source=https://ade.loganalytics.io/subscriptions/d406859c-8c7b-4143-8ecd-91570eafb534/resourceGroups/lastepoch-shared-wus/providers/Microsoft.OperationalInsights/workspaces/lastepoch-loganalytics-wus;Initial Catalog=NetDefaultDB</ConnectionString>
   </ServerDescriptionBase>
 </ArrayOfServerDescriptionBase>
