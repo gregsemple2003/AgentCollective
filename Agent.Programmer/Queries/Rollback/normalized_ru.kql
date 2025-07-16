@@ -1,0 +1,88 @@
+﻿// Use this request first in lastepoch-diagnostics to identify hot seconds for a particular partition
+// You must enable diagnostics in the specific cosmos account
+// CDBPartitionKeyRUConsumption
+// | where AccountName has "LASTEPOCH-DATA-JPN-EAST-PROD"
+// | summarize sum(RequestCharge), make_set(PartitionKey), count() by bin(TimeGenerated, 1s), PartitionKeyRangeId
+// //| summarize count() by AccountName, bin(TimeGenerated, 1h)
+// //| extend TimeAgo = now() - TimeGenerated
+// | sort by sum_RequestCharge desc
+
+// Parameters ------------------------------------------------
+// Use this request to figure out which game server writes caused us to be over RU limit
+// Once you figure out the problematic partition keys and time range above, paste them into parameters below
+let targetPartitionKeys = dynamic([
+    "54E16439F45FEB0D"
+]);
+let targetSecondBin = ago(2h);
+let targetSecondBinSize = 1s;
+// -----------------------------------------------------------
+
+// One row per write that hit the specified second bin
+let writesPerSecondBin = GameServerLogs
+| where TimeGenerated > targetSecondBin and TimeGenerated < (targetSecondBin + 2h)
+| where Message startswith "Update operation completed"
+| where Location has "ni-prod-jptyo-lsw01-last-epoch" or Location has "ni-prod-hkhkg-sco01-last-epoch" // DEBUGGING
+| extend Details             = todynamic(JsonDetails)
+| extend AccountId           = tostring(Details.MasterPlayerAccountId)
+| extend Category            = tostring(Details.Category)
+| extend EntityId            = tostring(Details.EntityId)
+| extend RequestUnits      = todouble(Details.Details.response.RequestUnits)
+| where AccountId in (targetPartitionKeys)
+// Gather RUs and request counts by category
+| project TimeGenerated, Category, AccountId, EntityId, RequestUnits, Region, Location, Host
+| summarize 
+    SumRU = sum(RequestUnits), 
+    Count = count(), 
+    AccountIds = make_set(AccountId),
+    Hosts = make_set(Host)    
+    by Location, TimeBin = bin(TimeGenerated, targetSecondBinSize), Category
+| summarize 
+    RUsByCategory = make_bag(bag_pack(Category, SumRU)), 
+    CountsByCategory = make_bag(bag_pack(Category, Count)), 
+    TotalRUs = sum(SumRU), 
+    TotalCount = sum(Count),
+    AccountIds = make_set(AccountIds),
+    Hosts = make_set(Hosts)
+    by Location, TimeBin
+// Finalize
+| extend TimeAgo = now() - TimeBin
+| order by TotalRUs desc
+;
+
+// Given a host where too many writes occurred, investigate the host
+let targetHost = "prod-prod-a-asia-east-sm5hn-mg8kv";
+let hostHotWriteTimes = GameServerLogs
+| where TimeGenerated > targetSecondBin and TimeGenerated < (targetSecondBin + 2h)
+| where Host has targetHost
+| where Message startswith "Update operation completed"
+| summarize count() by bin(TimeGenerated, targetSecondBinSize)
+| order by count_ desc
+//| project-reorder TimeGenerated, Message, JsonDetails, Host, Location
+//| sort by TimeGenerated asc
+;
+
+// Check for excessive write logging, it should tell you the gameplay stack trace that's doing this (>50 writes in a frame)
+let hostLogs = GameServerLogs
+| where TimeGenerated > targetSecondBin and TimeGenerated < (targetSecondBin + 2h)
+| where Host has targetHost
+| where Message contains "excessive dirtying"
+| parse Message with "Excessive dirtying for player '" AccountId "' when adding entity '" EntityId "' type '" EntityType "'"
+| project-reorder TimeGenerated, AccountId, EntityId, EntityType, Message, StackTrace, JsonDetails, Host, Location
+| sort by TimeGenerated asc
+;
+
+// Service-wide, summarize the occurrences of this problem (along with optional StackTrace so we can see what code is causing the problem)
+let excessiveWriteSummary = GameServerLogs
+| where TimeGenerated > ago(7d)
+| where Message contains "excessive dirtying"
+| parse Message with "Excessive dirtying for player '" AccountId "' when adding entity '" EntityId "' type '" EntityType "'"
+| extend StackTrace = replace(@"[\r\n]+", "<br>", tostring(StackTrace)) // flatten so its a single line
+| summarize count() by bin(TimeGenerated, 1d), Location, AccountId, StackTrace
+| order by count_ desc
+;
+
+//writesPerSecondBin
+//hostHotWriteTimes
+//hostLogs
+//| where StackTrace !contains "ServerSetTabInfo"
+excessiveWriteSummary
