@@ -19,7 +19,7 @@ let minSessionTime = 1.0;           // ignore <1 s sessions
 let maxSessionTime = 600.0;         // cap sessions at 10 min; set 0 to disable
 let minBucketSampleCount = 3;      // minimum number of sessions in a bucket or it will be dropped
 let targetProfiles = dynamic(["nightlyrelease"]);
-let SliceParam = "level";
+let SliceParam = "vramMax";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Function to derive the player-platform from OS & NormalizedGpu
@@ -149,7 +149,7 @@ let levelUpEvents = GameServerLogs
               Class       = tostring(d.Labels.Class),
               Mastery     = tostring(d.Labels.Mastery),
               Level       = toint(d.NewLevel)
-    | project TimeGenerated, CharacterId, Class, Mastery, Level
+    //| project TimeGenerated, CharacterId, Class, Mastery, Level
 ;
 
 let levelUpEnriched =
@@ -344,7 +344,7 @@ let ExtendSlice = (
         slice in ("scene", "class_mastery"), double(null),    // string dimensions have a null sort key
         todouble(Slice))
      | where slice != "level" or (SortKey >= 0 and SortKey <= 100) // filter level
-     | where slice != "vramMax" or (SortKey >= 2 and SortKey <= 24) // filter vramMax
+     | where slice != "vramMax" or (SortKey >= 2 and SortKey <= 24 and toint(SortKey) % 2 == 0)
 };
 
 let packetsWithSlice =
@@ -386,10 +386,12 @@ let packetFpsPercentiles = packetsWithSlice
       P75_FPS   = 1000.0 / percentile(AvgFrameMs, 75),
       P99_FPS   = 1000.0 / percentile(AvgFrameMs, 99)
     by Slice, SortKey
-| where Samples >= minBucketSampleCount
+| extend SamplesPercent = round(100.0 * Samples / totalSampleCount, 2)
+| where Samples > 20
+| extend Level = iff(P75_FPS < 60, "warning", "info")
 | sort by SortKey asc nulls last, Slice asc
 | project-away SortKey
-| project-reorder Slice, Samples, P50_FPS, P75_FPS, P99_FPS
+| project-reorder Slice, Samples, SamplesPercent
 ;
 
 //frameTimeBySlice
@@ -412,26 +414,13 @@ let packetFpsPercentiles = packetsWithSlice
 //       )
  
 // FPS by slice
-packetFpsPercentiles
+//packetFpsPercentiles
+// | project Slice, P75_FPS
+// | render columnchart
+//       with (
+//           title   = "P75 FPS by slice",
+//           xtitle  = "Slice",
+//           ytitle  = "FPS"
+//       )
 
-// Which events are directly tied to client session id
-// GameServerLogs
-// | where InTimeRange(TimeGenerated)
-// | where isnotempty(PlayerClientSessionId)
-// | project-reorder TimeGenerated, Message, Category, JsonDetails
-// | where Message !contains "Set Level"
-// | take 100
-// //| summarize arg_max(TimeGenerated, Profile) by PlayerClientSessionId
-
-// GameServerLogs
-// | where InTimeRange(TimeGenerated)
-// | where isnotempty(PlayerClientSessionId)
-// //| where Message !contains "Set Level"
-// //| where JsonDetails contains "StartPlayerInitialisation"
-// | project-reorder TimeGenerated, Message, Category, JsonDetails, PlayerClientSessionId
-// | take 100
-
-//clientSessionIdToLevelUpSummary
-//clientSessionIdToAccountId | take 100
-//accountToCharacterId | take 100
-//levelUpEnriched | take 100
+levelUpEvents | take 100
