@@ -3,8 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 let InTimeRange = (ts:datetime)
 {
-    //ts between (ago(1d) .. now())
-    ts between (datetime(2025-04-19) .. datetime(2025-04-19)+1h)
+    ts between (ago(3d) .. now())
+    //ts between (datetime(2025-04-19) .. datetime(2025-04-19)+1h)
     // $__timeFilter(ts) // for Grafana
 };
 let targetPlatform = "";
@@ -19,7 +19,9 @@ let minSessionTime = 1.0;           // ignore <1 s sessions
 let maxSessionTime = 600.0;         // cap sessions at 10 min; set 0 to disable
 let minBucketSampleCount = 3;      // minimum number of sessions in a bucket or it will be dropped
 let targetProfiles = dynamic(["nightlyrelease"]);
-let SliceParam = "vramMax";
+let SliceParam = "scene";
+let playfabId = "7053413812089D16";
+let targetClientSessionId = "83b85b38265e4599a34e7e24aa242875";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Function to derive the player-platform from OS & NormalizedGpu
@@ -40,6 +42,7 @@ let DetectPlatform = (os:string, normalizedGpu:string)
 // ─────────────────────────────────────────────────────────────────────────────
 let baseEventQuery = playfabevents
 | where InTimeRange(Timestamp)
+| where isempty(playfabId) or Entity_Id has playfabId
 | where FullName_Name has "lastepoch_session_performance_metrics" 
     or (FullName_Name has "lastepoch_client_log" and EventData contains "frameTimeMetrics")// backwards compat with old event format
 | extend JsonDetails = tostring(coalesce(EventData.json_details, EventData.jsonDetails)) // backwards compat with old event format
@@ -387,8 +390,8 @@ let packetFpsPercentiles = packetsWithSlice
       P99_FPS   = 1000.0 / percentile(AvgFrameMs, 99)
     by Slice, SortKey
 | extend SamplesPercent = round(100.0 * Samples / totalSampleCount, 2)
-| where Samples > 20
-| extend Level = iff(P75_FPS < 60, "warning", "info")
+| where isnotempty(playfabId) or Samples > 20  // no sample count filter for specific users
+//| extend Level = iff(P75_FPS < 60, "warning", "info")
 | sort by SortKey asc nulls last, Slice asc
 | project-away SortKey
 | project-reorder Slice, Samples, SamplesPercent
@@ -412,8 +415,9 @@ let packetFpsPercentiles = packetsWithSlice
 //           xtitle  = "Slice",
 //           ytitle  = "P75 hitches / hr"
 //       )
- 
-// FPS by slice
+
+//FPS by slice
+//packetsWithSlice
 //packetFpsPercentiles
 // | project Slice, P75_FPS
 // | render columnchart
@@ -422,5 +426,80 @@ let packetFpsPercentiles = packetsWithSlice
 //           xtitle  = "Slice",
 //           ytitle  = "FPS"
 //       )
+// 
+//levelUpEvents | take 100
+ 
+let startTime = ago(1d);
+let vramInfoQuery = playfabevents
+| where Timestamp > startTime
+| where FullName_Name has "lastepoch_session_performance_metrics"
+//| where EventData contains "profilerScopeMetrics"
+| where Entity_Id contains "236C6464D48B5CEA"
+//| where EventData contains "vramInfo"
+| extend JsonDetails = tostring(coalesce(EventData.json_details, EventData.jsonDetails)) // backwards compat with old event format
+;
 
-levelUpEvents | take 100
+let serverAssetBundlesQuery = GameServerLogs
+| where TimeGenerated > startTime
+| where Message startswith "Client asset bundles"
+| project TimeGenerated, Message, JsonDetails
+| extend d = parse_json(JsonDetails)
+| extend ClientSessionId = tostring(d.clientSessionId),
+         Scene           = tostring(d.scene),
+         UptimeSeconds   = todouble(d.uptimeSeconds) // pull out the scalar properties once
+| where isnotempty(ClientSessionId)
+| where isempty(targetClientSessionId) or (ClientSessionId has targetClientSessionId)
+| project-away JsonDetails
+| mv-expand BundleEvent = d.bundleEvents           // one row per element of the array
+| project-away d
+| extend Event = tostring(BundleEvent)               // make sure it's purely a string
+| parse Event with                           // CSV‑style pattern for the 5 items in each line
+        EventTime:datetime               ","  '"' Action    '"' ","   FileSize:long
+        "," '"' FileName            '"' ","   BundlePtr:string
+| extend DeltaFileSize = case(Action == "Loaded", FileSize, 
+                              Action == "Unloaded", -1 * FileSize,
+                              0)
+| project ClientSessionId, Scene, UptimeSeconds, EventTime, Action, FileSize, FileName, BundlePtr
+;
+
+let BinSeconds      = 1m;
+let netBytesPerClientSession = serverAssetBundlesQuery
+| where Action in ("Loaded","Unloaded")
+| extend DeltaFileSize = case(
+    Action == "Loaded",   FileSize,
+    Action == "Unloaded", -1 * FileSize,
+    0)
+| sort by ClientSessionId asc, EventTime asc
+| serialize // for prev()
+| extend NetBytes = row_cumsum(DeltaFileSize, prev(ClientSessionId) != ClientSessionId)
+| extend NetBytesMB = NetBytes / 1024.0 / 1024.0
+;
+
+let netBytesPerClientSessionGraph = netBytesPerClientSession
+// | summarize NetBytesMB = max(NetBytesMB) by bin(UptimeSeconds, 1), ClientSessionId // ensure 1 point per uptime value
+// | sort by ClientSessionId asc, UptimeSeconds asc
+| project UptimeSeconds, NetBytesMB, ClientSessionId
+// | render linechart
+// with (
+//     title = "NetBytesMB vs EventTime by ClientSessionId",
+//     xcolumn = UptimeSeconds,
+//     xtitle = "UptimeSeconds",
+//     ytitle = "Net Bytes (MB)",
+//     series = ClientSessionId
+// )
+;
+
+let bundlesInMemory = netBytesPerClientSession
+| summarize sum(DeltaFileSize) by BundlePtr, FileSize, FileName
+| where sum_DeltaFileSize > 0
+| extend FileSizeMB = FileSize / 1024.0 / 1024.0
+//| project BundlePtr, FileName, FileSizeMB
+| sort by FileSizeMB desc, BundlePtr desc
+;
+
+//vramInfoQuery
+//serverAssetBundlesQuery
+bundlesInMemory
+//netBytesPerClientSession
+//netBytesPerClientSessionGraph
+// | project UptimeSeconds, NetBytesMB, ClientSessionId
