@@ -368,8 +368,8 @@ let playtime = GameServerLogs
 | sort by TimeGenerated desc
 ;
 
-hitchReportsByCategory
-//hitchReportsBySignature
+//hitchReportsByCategory
+hitchReportsBySignature
 //hitchReportsByUser
 //hitchReportsByScene
 //playtime

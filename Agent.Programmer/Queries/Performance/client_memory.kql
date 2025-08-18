@@ -1,5 +1,5 @@
 let minSampleCount = 1;
-let startTime = ago(10d);
+let startTime = ago(20d);
 let minSessionTime = 1;
 let maxSessionTime = 600.0; // 0 to disable
 let targetProfiles = dynamic(["nightlyrelease"]);
@@ -143,7 +143,7 @@ let lowMemoryQuery = baseEventQuery
 ;
 
 let percentilesMemQuery = avgMemoryPerSession
-| summarize percentiles(AverageMemGB, 50, 90, 99)
+| summarize percentiles(AverageMemGB, 50, 90, 99, 99.9, 99.99)
 ;
 
 //lowMemoryQuery
