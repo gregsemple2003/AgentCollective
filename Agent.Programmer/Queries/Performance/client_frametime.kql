@@ -493,13 +493,23 @@ let bundlesInMemory = netBytesPerClientSession
 | summarize sum(DeltaFileSize) by BundlePtr, FileSize, FileName
 | where sum_DeltaFileSize > 0
 | extend FileSizeMB = FileSize / 1024.0 / 1024.0
-//| project BundlePtr, FileName, FileSizeMB
+| project BundlePtr, FileName, FileSizeMB
+| sort by FileSizeMB desc, BundlePtr desc
+;
+
+let bundlesWithMultipleLoads = netBytesPerClientSession
+| extend LoadedCount = iff(DeltaFileSize>0, 1, 0)
+| summarize LoadedCount = sum(LoadedCount) by BundlePtr, FileSize, FileName
+| where LoadedCount > 1
+| extend FileSizeMB = FileSize / 1024.0 / 1024.0
+| project BundlePtr, FileName, FileSizeMB
 | sort by FileSizeMB desc, BundlePtr desc
 ;
 
 //vramInfoQuery
 //serverAssetBundlesQuery
-bundlesInMemory
+//bundlesInMemory
+bundlesWithMultipleLoads
 //netBytesPerClientSession
 //netBytesPerClientSessionGraph
 // | project UptimeSeconds, NetBytesMB, ClientSessionId

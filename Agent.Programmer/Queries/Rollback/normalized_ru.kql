@@ -1,4 +1,4 @@
-﻿// Use this request first in lastepoch-diagnostics to identify hot seconds for a particular partition
+// Use this request first in lastepoch-diagnostics to identify hot seconds for a particular partition
 // You must enable diagnostics in the specific cosmos account
 // CDBPartitionKeyRUConsumption
 // | where AccountName has "LASTEPOCH-DATA-JPN-EAST-PROD"
@@ -78,6 +78,7 @@ let excessiveWriteSummary = GameServerLogs
 | parse Message with "Excessive dirtying for player '" AccountId "' when adding entity '" EntityId "' type '" EntityType "'"
 | extend StackTrace = replace(@"[\r\n]+", "<br>", tostring(StackTrace)) // flatten so its a single line
 | summarize count() by bin(TimeGenerated, 1d), Location, AccountId, StackTrace
+| project-reorder TimeGenerated, AccountId, count_
 | order by count_ desc
 ;
 
